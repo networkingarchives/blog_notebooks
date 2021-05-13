@@ -1,0 +1,363 @@
+---
+title: "Women in the State Papers Online"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+  word_document: default
+always_allow_html: yes
+---
+
+You can't search for women in the [State Papers Online](https://www.gale.com/primary-sources/state-papers-online). There's no way of knowing how many letters they wrote, or received, or how often they were mentioned. If you know the name you're looking for you can search through the descriptions and abstracts, but you would need to watch out for spelling variants or mistakes. This method also doesn't help estimate how many letters there are overall, and it limits the possibility of the chance discovery of women's writing in the archive. As in other datasets, for example wikipedia/wikidata, women's sources are under-represented. However, things are changing. Projects, notably [WEMLO](http://emlo-portal.bodleian.ox.ac.uk/collections/?page_id=2595), have spent considerable resources labelling female authors and extracting women's letters from the union catalogue, [Early Modern Letters Online](http://emlo.bodleian.ox.ac.uk/). The [RECIRC project](https://recirc.nuigalway.ie/cases/hartlib-circle) has systematically extracted mentions of written works by women found in the letters of the [Hartlib Papers](https://www.dhi.ac.uk/hartlib/), and the upcoming version of the [USTC](https://www.ustc.ac.uk/) will highlight printed works written by women. Women in the English State Papers have been the subject of significant study over the past few years, most notably Nadine Akkerman's work on female spies and intelligencers, but as yet letters by women in the electronic database have not been tagged. How might we approach this in State Papers Online?
+
+#### Women in SPO: A Computational Approach
+
+Manually combing through the metadata for the 160,000 or so letters in SPO looking for female authors would be a worthwhile task but outside the scope of the [Networking Archives](https://networkingarchives.org/) project. However, we decided to explore a much quicker computational approach, which isn't a replacement for a properly curated dataset, but it can help to gather some statistics on women's involvement in the State Papers, and point to some particularly interesting cases.
+
+One way to do this is to write a script to search through the author and recipient fields looking for womens' names. This is a more difficult task than you might think, for a few reasons. Men and women's names are often interchangeable, and their usage changes over time. SPO has spelling mistakes and variants, and many author and recipient names are unknown or ambiguous. There are some fully automated methods for detecting gender, such as the [Gender](https://cran.r-project.org/web/packages/gender/vignettes/predicting-gender.html) package for R, developed by Lincoln Mullen, which uses historical datasets of names and their frequency to predict gender, or [this method](https://www.geeksforgeeks.org/python-gender-identification-by-name-using-nltk/) using a Python package [NLTK](https://www.nltk.org), which uses machine learning to classify first names, by picking up patterns in the individual characters of a name (those ending in 'a' are more likely to be female, for example).
+
+Neither of these are totally satisfactory. Instead, we decided on a mix between automatic and manual methods. The first step was to construct a list of likely female names. For this we started with the full list in the Gender package, and added a bunch of other names or terms that were likely to help find women's names, including titles such as Lady, Duchess, Queen and so forth, and some other names which we noticed were missing and were common at the time. What this list doesn't pick up are abbreviations or initials, or spelling mistakes and variants, and we did also add a few of these manually, where we knew the author of a letter was female. This resulted in a master list of names which were then all individually checked. In total we found 1,100 women (either authors or recipients of letters), with just over 230 unique first names. You can see in the chart below that a few names are particularly popular: Elizabeth is by far the most commonly-found, followed by Mary, Anne, Margaret, and Katherine.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.width=6}
+library(tidyverse)
+
+spo_women = read_csv('/Users/Yann/Downloads/spo_women - spo_women.csv', col_names = T) %>% filter(gender == 'F')
+
+spo_women %>% 
+  mutate(name = str_remove(name, "(?i)lady|countess|duchess|queen|Mrs\\.")) %>% 
+  mutate(name = trimws(name, which = 'both')) %>% 
+  separate(name, into = c('firstname', 'lastname'), sep = ' ') %>% 
+  mutate(firstname = str_remove_all(firstname, "[:punct:]")) %>% 
+  mutate(firstname = trimws(firstname, which = 'both')) %>% 
+  group_by(firstname) %>% 
+  tally() %>% 
+  arrange(desc(n)) %>% 
+  filter(!firstname %in% c('of')) %>% 
+  head(10) %>% 
+  rename(count = n) %>% ggplot() + geom_col(aes(x = reorder(firstname,count), y =count), color = 'black', fill = 'lightblue', alpha = .8) + coord_flip() + labs(x = NULL) + theme_bw() + 
+  labs(title = "Count of Womens' Names in State Papers Online, 1603-1714")+ 
+  theme(title = element_text(face = 'bold'))
+```
+
+# Women as Letter-writers
+
+Through these methods we have found approximately 2,400 letters written by about 900 women, though this result should be taken as preliminary and there are almost certainly more to be found (our initial algorithm, which checked through a list of both modern and historical names. missed out Aphra Behn, and there are likely others with non-standard names or initials which have also been overlooked). This represents about 1.5% of all the correspondence in State Papers Online.
+
+In the interactive treemap below, you can explore the distribution of letters written by women in the various series of the State Papers. This shows that the most notable is Elizabeth of Bohemia, the author of 307 letters in SPO and recipient of 151, mostly in SP 16 (SPD, Charles I) and SP 81 (SPF Germany). SP 29 (Charles II) contains several hundred letters written by women, including nine letters written by Elizabeth Maitland, Duchess of Lauderdale, 2nd Countess of Dysart to the 1st Earl of Inchquin under various aliases (others are found in SP 78, along with some of his responses), and ten letters of news written by Ann Bower, who along with her husband Richard kept a coffee shop in Great Yarmouth and together are some of Joseph Williamson's most prolific correspondents.[^1]
+
+[^1]: For example Ann Bower to Sir Joseph Williamson, 16 July 1669, SP 29/263 f.11, in which she corrects an item she read in Williamson's newsletter, regarding an infant who had supposedly died of the plague.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Interactive Treemap of SPO Women Writers"}
+library(tidyverse)
+library(plotly)
+library(lubridate)
+
+spo_raw = read_delim('./../../../Documents/MOST RECENT DATA/fromto_all_place_mapped_stuart_sorted', delim = '\t', col_names = F)
+
+spo_raw = spo_raw %>% filter(!is.na(X8))
+spo_mapped_people = read_delim('/Users/Yann/Documents/GitHub/cumulative_contacts/cumulative_contacts/data/people_docs_stuart_200421', delim = '\t', col_names = F) %>% mutate(X1 = as.character(X1))
+
+spo_added_people = read_csv('/Users/Yann/Documents/GitHub/blog_notebooks/Additional Person IDs - Sheet1 (1).csv', col_names = T)
+
+domestic_series_names = read_delim('/Users/Yann/Documents/non-Github/sp_treemap/sp_domestic.txt', delim = '\t', col_names = F) 
+
+colnames(domestic_series_names) = c('X4', 'X5', 'X6')
+
+domestic_series_names = domestic_series_names %>% separate(X4, into = c('X1', 'X2', 'X3'), sep = "\\|")
+
+domestic_series_names = domestic_series_names %>% mutate(X2 = trimws(X2, which = 'both'))
+
+domestic_series_names = domestic_series_names %>% 
+    mutate(X3 = str_replace(X3, "Secretaries of State:", ''))  %>% 
+    mutate(X3 = str_replace(X3, "State Papers Domestic", 'SPD'))%>% 
+    mutate(X3 = str_replace(X3, "State Papers Foreign", 'SPF'))%>%
+    mutate(X3 = str_replace(X5, "Secretaries of State:", '')) %>%
+    mutate(X5 = str_replace(X5, "State Papers Domestic", 'SPD'))%>% 
+    mutate(X5 = str_replace(X5, "State Papers Foreign", 'SPF'))
+
+spo_raw = spo_raw %>% 
+    mutate(folio_name = X8) %>% 
+    separate(X8, into = c('series', 'rest'), sep = '/')
+
+spo_raw = spo_raw  %>% mutate(series = trimws(series, which = 'both'))
+
+spo_raw = spo_raw %>% separate(rest, into = c('folio', 'folio_no'), sep = ' ')
+
+spo_raw = spo_raw %>%  
+    left_join(domestic_series_names %>% 
+                  mutate(X1 = trimws(X1, which = 'both')) , by = c('series' = 'X1'))
+
+spo_raw = spo_raw %>% mutate(series = paste0(series, " (", X3.y, ")" ))
+
+for_tm = spo_raw %>% 
+    filter(!is.na(series)) %>% 
+    group_by(series, folio) %>% 
+    tally() %>% 
+    mutate(folio = paste0(series, "_", folio)) %>% 
+    mutate(state_papers = 'state_papers')
+
+authors_for_tm = spo_raw  %>% filter(X1 %in% spo_women$spo_id)%>% 
+    filter(!is.na(series)) %>% 
+    group_by(X1, series) %>% 
+    tally()  %>% 
+    mutate(X1 = as.character(X1)) %>%
+    left_join(spo_mapped_people %>% dplyr::select(X1, X2), by = 'X1') %>% 
+    mutate(X1 = paste0(X2, " (", X1, ")")) %>%
+    mutate(state_papers = 'state_papers') 
+
+s_p = spo_raw %>%
+    group_by(series, X5.y) %>% 
+    tally() %>% 
+    rename(labels = series, parents = X5.y)
+
+
+s_p = s_p %>% ungroup() 
+
+g = spo_raw %>% 
+    group_by(X5.y, X6.y) %>% tally() %>% 
+    filter(!is.na(X5.y)) %>% 
+    rename(labels = X5.y, parents = X6.y) %>% ungroup() %>% 
+    add_row(labels = 'state_papers', parents = '', n = 16)
+
+t = spo_raw %>% 
+    group_by( X6.y) %>% 
+    tally() %>% 
+    filter(!is.na(X6.y)) %>% 
+    rename(labels = X6.y) %>% mutate(parents = 'state_papers')
+
+
+all_for_tm = tibble(
+    labels = c(s_p$labels, 
+               authors_for_tm$X1, 
+               g$labels, t$labels),
+    parents = c(s_p$parents,  
+                authors_for_tm$series, 
+                g$parents, t$parents),
+    values = c(s_p$n, 
+               authors_for_tm$n, 
+               g$n, t$n))  %>% 
+    mutate(text = str_extract(labels, "SP [0-9]{1,3}|\\([0-9]{1,}\\)")) %>% 
+    mutate(text = str_remove(text, "\\("))%>% 
+    mutate(text = str_remove(text, "\\)")) %>% 
+    mutate(text = coalesce(text, labels)) %>%
+    mutate(values = ifelse(labels %in% parents, 1, values))
+```
+
+------------------------------------------------------------------------
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ plot_ly(data = all_for_tm, 
+                customdata = ~labels,
+                labels = ~labels,
+                parents = ~parents, 
+                values = ~values,
+                text = ~text,
+                textinfo = "text",
+                type = "treemap",
+                extendsunburstcolors = FALSE,
+                maxdepth=4
+        ) %>% layout(title = "Treemap of Womens' Letters in SPO")
+```
+
+Queen Mary II of England, Queen Marie, Henrietta of Lorraine, and Queen Anne of England are also authors of significant numbers of letters in SPO, as well as the famous female spy, Behn: SPO contains 12 letters sent by her from Antwerp. These letters document her intelligence work and use of ciphers[^2], make mention of her dealings with other spies such as 'Celadon' (William Scott), and Joseph Bampfield[^3], as well as her struggles with money.[^4] SP 21 (the Derby House Committee Papers) is notable for containing not a single letter by a female writer, as is SP 79 (SPF Genoa) and SP 93 (Sicily and Naples). These are the exceptions to the rule, however. Some of the female voices found are from small family collections or bundles of intercepted letters, such as those written by Sarah Bardsey to her nephew Peter Fabian regarding a legal case involving some property, which seem to have made their way to the State Papers via the Court of Wards[^5], an episode which culminated in her being sued for not vacating a house following its sale.[^6]
+
+[^2]: Aphara Behn to James Halsall, 27 August 1666, SP 29/169 f.47.
+
+[^3]: Aphara Behn to James Halsall, 16 August 1666, SP 29/167 f.209.
+
+[^4]: Aphara Behn to Thomas Killigrew, 31 August 1666, SP 29/169 f.157.
+
+[^5]: Sarah Bardsey to Peter Fabian, 26 April 1653, SP 46/100 f.7.
+
+[^6]: Sarah Bardsey to Peter Fabian, 28 December 1657, SP 46/100 f.43.
+
+## Intelligencers
+
+The role of women in the State intelligence network requires some further digging. We know from the work of Nadine Akkerman that women played an important role in seventeenth-century spying and intelligence-gathering, but it is clear they were closely involved in the more everyday, 'newsy' type circulation of information, too. The suggestion by some historians that women were less interested in news is borderline absurd. There is ample evidence that women were key players in Joseph Williamson's network of informants. One Ann Bower ran a coffee house in Yarmouth along with her husband and from here the couple distributed and collected news. Lady Utricia Swann wrote to Joseph Williamson (who was then in Cologne) from Hamburg, relaying and commenting on international news, though she added in one letter, 'I dare not venture to wryte any niews least your Excellency should thincke mee a busie woman',[^7] something of a joke considering all her letters to him either contained news or complained that she had none.[^8] There was at least one female postmaster, in Plymouth, and women, known as 'book women' or hawkers, were employed by the head postmaster, James Hickes, to distribute the official Government newspaper, the *London Gazette*. Evidently their services were highly sought-after by the post office, to the extent that Hickes was worried that they might be poached by another news writer, Henry Muddiman, if not compensated properly--- and on occasion, at least, they also acted as informants to Williamson and Hickes in their own right. Women were represented in the upper ranks of the intelligence administration, too: [Katherine Stanhope](https://en.wikipedia.org/wiki/Katherine_Stanhope,_Countess_of_Chesterfield) held the office of postmaster general from 1664.
+
+[^7]: Lady Utricia Swann to Sir Joseph Williamson, 06 September 1673, SP 82/12 f.54.
+
+[^8]: Eg Lady Utricia Swann to Sir Joseph Williamson, 01 January 1673, SP 82/12 f.88.
+
+## Petitioners
+
+Even more so than with men, the data has a skewed distribution: a few authors write large numbers of letters, and a large number of authors write very few each. In fact, out of 934 found female writers, 637 (68%) author just a *single* letter (the equivalent number for men is 12,734 out of 20,915 writers, or 60%). The most frequent recipients of these one-off letters are Charles II (86 letters), William Cecil (70), Joseph Williamson (48) and the Admiralty (35). Many of these women were [petitioners who wrote letters to the authorities asking for pardons or favours](https://petitioning.history.ac.uk/blog/2021/01/crime-and-womens-petitions-to-the-post-restoration-stuart-monarchs-three-case-studies/). Examples we've found include Margaret Gamlyn, who in 1686 petitioned James II for the release of her son-in-law, imprisoned for his part in the Monmouth Rebellion[^9], Dorothy Mervyn who wrote to William Cecil asking for a lease on her son's inherited manor to be settled[^10], or Sara De Callaway, who asked to be kept on as the supplier of 'white starch' to Queen Anne of Denmark as she had to Elizabeth.[^11] One-off letters to the Admiralty, in particular, are usually petitions asking either for relief following the death of a husband[^12], or pleading for arrangement of a prisoner exchange, such as Mary Hatfield's letter written in 1657, whose husband had been captured and was held by the French at Dunkirk.[^13] These letters were obviously the culmination of significant effort to navigate the necessary naval and legal bureaucracies to secure release: generally they include the name of a specific enemy prisoner to be exchanged, plus a certificate from the relevant authorities stating that the prisoner was in their custody.[^14] One exception to these petitioners is Alice Hutton: in 1657 she wrote to re-negotiate her contract with the Admiralty to supply them with leaden shot.[^15]
+
+[^9]: Martha Gamlyn to James II, 30 April 1686, SP 31/3 f.301.
+
+[^10]: Dorothy Mervyn to Sir William Cecil, after 1605, Cecil Papers
+
+[^11]: Sara De Callaway to Sir William Cecil, 24 May 1612, Cecil Papers
+
+[^12]: Margaret Risby to Admiralty, 12 December 1657, SP 18/175 f.85.
+
+[^13]: Mary Hatfield to Admiralty, 17 December 1657, SP 18/175 f.117.
+
+[^14]: Katherine Mechin to Admiralty, 03 February 1657, SP 18/162 f.12.
+
+[^15]: Alice Hutton, widow to Admiralty, 01 January 1657, SP 18/176 f.59.
+
+# Women as Letter Recipients
+
+SPO contains fewer letters *received* by women, which is unsurprisingly as the recipients in a Government archive tend to be politicians, monarchs or administrators, and few of those positions were available to women. In total we've found 936 letters, received by 261 women. Though again at the top of the list are many monarchs and noblewomen (Elizabeth of Bohemia, Queen Anne, and Queen Henrietta Maria are among the top ten), some lesser-known women are also present in large numbers. The woman with the third-highest number of letters received now in State Papers Online (57) is one Hannah Ferguson. Ferguson received letters from her husband Robert who was implicated in the Rye House Plot and fled to Amsterdam: his fifty letters sent to her, most likely confiscated, make it clear she was acting as a conduit and source of intelligence from their home in Hatton Garden while he was in exile. Her own voice is mostly absent, save three letters, one written to Robert detailing a search of their home[^16], and an unfinished draft of a letter written on the back of one of her husband's, which is duly noted by the calendar.[^17]
+
+[^16]: Hannah Ferguson to Robert Ferguson, 01 January 1683, SP 29/424 f.229.
+
+[^17]: Robert Ferguson to Hannah Ferguson, 17 October 1679, SP 29/442 f.214.
+
+# Women Writing to Women
+
+Rarer still are letters sent by a woman to another woman - we've only found 64 out of all 160,000 in the State Papers with these methods. Many of these are between monarchs, such as those to Queen Anne of England/Denmark sent from Queen Marianne of Portugal[^18], Elizabeth of Bohemia[^19], and Queen Marie of France.[^20] In the even rarer instances of letters between women *not* heads of state, we find a tantalizing glimpse of alternative channels of communication. In 1618 the English courtier Elizabeth Raleigh wrote to Lady Joyce Carew to ask her to use her influence with Thomas Wilson, the second keeper of the Paper Office to convince him to stop the pursuit of her husband Walter's personal library and archive, as it was, she said, all he had left her son.[^21] His mechanical instruments had already been confiscated, she added, and though she was promised them back, it hadn't happened. One of them was worth 100 pounds (£13,000 in today's money, according to the National Archive's [currency converter](https://www.nationalarchives.gov.uk/currency-converter)). Others who used a similar alternative channel include Dorothea Helena Stanley, Countess of Derby, who wrote to Lady Killegrew, sister of Margaret Cavendish asking for her to petition on behalf of a Mr. Calcott who had killed a man in self-defence.[^22]
+
+[^18]: Queen Marianna of Portugal to Queen Anne, 23 September 1710, SP 89/20 f.167.
+
+[^19]: Queen of Denmark to Elizabeth of Bohemia, 26 March 1632, SP 75/12 f.357.
+
+[^20]: Queen Marie to Queen Anne of Denmark, 16 August 1603, SP 78/49 f.238.
+
+[^21]: Elizabeth, Lady Raleigh to Lady Joyce Carew, 08 November 1618, SP 14/103 f.126.
+
+[^22]: Dorothea Helena Stanley, Countess of Derby to Lady Killigrew, 07 May 1665, SP 29/120 f.135.
+
+# Charting Women's Letters Chronologically
+
+As well as highlighting interesting letters or collections, the matching allows us to chart more accurately the extent of womens' letters in the State Papers as they occur in time. The chart below is the count of letters identified as written by women across the Stuart period and found in State Papers Online.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+load('/Users/Yann/Documents/GitHub/topics_map/williamson/withtext')
+load('/Users/Yann/Documents/non-Github/de_places_wikidata/sp_coordinates')
+
+sp_coordinates = sp_coordinates %>%
+mutate(coordinates = str_remove_all(coordinates, "Point\\(|\\)")) %>%
+separate(coordinates, into = c('coordinates_longitude', 'coordinates_latitude'), sep = ' ') %>% 
+  mutate(coordinates_longitude = str_remove(coordinates_longitude, "Point\\(")) %>% filter(!is.na(original_label))
+
+
+
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+spo_women_vec = spo_women %>% filter(gender== 'F') %>% pull(spo_id)
+
+
+p = spo_raw %>% filter(X1 %in% spo_women_vec)  %>% left_join(spo_mapped_people %>% mutate(X1 = as.numeric(X1)) %>%  select(1,2), by = c('X2.x' = 'X1'))  %>% mutate(year = year(ymd(X3.x))) %>%
+  filter(year %in% 1603:1714) %>% group_by(year) %>% tally() %>% ggplot() + geom_col(aes(x = year, y = n))  + 
+  theme_bw() + labs(y = 'Letters by Women', x = NULL, title = 'Letters Written by Women in SPO, per Year') + theme(title = element_text(face = 'bold'))
+
+ggplotly(p)
+```
+
+While it looks very uneven, it broadly reflects the chronological shape of the State Papers data as a whole: there's very little correspondence by any gender for most of the civil war years, a time when letters by women are almost non-existent. A couple of periods stand out: there's 223 letters sent between 1636--1639, mostly by Elizabeth Stuart to Thomas Roe, Henrietta of Lorraine to Balthazar Gerbier, and Queen Christina of Sweden to Charles I. But by far the most notable single year is 1683, which has 86 letters written by women, standing out in great contrast to the years before and after. These are mostly petitions written to Charles II, written in the aftermath of the [Rye House Plot](https://en.wikipedia.org/wiki/Rye_House_Plot), by wives and mothers, either asking for their loved ones to be released, asking for them to be given better lodgings, or to be allowed a visit.
+
+# Mapping Women's Letters
+
+The letters are linked to geographic data and with this it is possible to map the origins of the letters by women. Unfortunately the majority of women's letters do not have this geographic information, so there's little point looking for representative patterns. Those letters that do have this information are concentrated in England, particularly London, as well as a cluster sent from The Hague. Those from the latter are mostly Elizabeth of Bohemia writing to the diplomat Thomas Roe, plus some letters of introduction from [Amalia of Solms-Braunfels](https://en.wikipedia.org/wiki/Amalia_of_Solms-Braunfels), Princess Dowager of Orange and grandson of William III.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(sf)
+spo_women_sf = spo_raw %>% 
+  filter(X1 %in% spo_women_vec) %>% 
+  group_by(X6.x) %>% 
+  tally() %>% 
+  left_join(sp_coordinates, by = c('X6.x' = 'original_label')) %>% filter(!is.na(coordinates_latitude))   %>% 
+  group_by(standard_label, coordinates_longitude,coordinates_latitude ) %>% tally(n) %>% 
+  st_as_sf(coords = c('coordinates_longitude', 'coordinates_latitude'))
+
+library(leaflet)
+
+leaflet() %>% addTiles() %>% 
+  addCircleMarkers(data= spo_women_sf, radius = ~sqrt(n)*3, label = ~standard_label, fill = T, fillColor = '#F8766D', stroke = T, fillOpacity = .4, weight = 1, color = 'black' )
+
+```
+```{r}
+library(geojsonsf)
+wales_json = '{"type":"LineString","coordinates":[[-3.2192653062,51.3246112832],[-3.5059270652,51.3459284044],[-4.0038436296,51.3974705249],[-4.3669436517,51.5063758382],[-4.5738425496,51.5886494158],[-4.9977750721,51.4686938602],[-5.2877520414,51.6024339853],[-5.4562383535,51.7793047138],[-5.3351708146,51.9862497581],[-4.2536531778,52.4517455117],[-4.2569576594,52.8196531639],[-4.4582158717,52.6923442412],[-4.9505514296,52.7764396323],[-4.496551344,53.078646613],[-4.7676643374,53.1878963864],[-4.5598018559,53.6223279442],[-4.0600587072,53.4036029507],[-3.7105340155,53.3727732208],[-3.345850149,53.3841514852],[-3.0945030244,53.2572590829],[-2.9737585241,53.2032446803],[-2.9946138727,53.1315573832],[-2.9032256471,53.1104556177],[-2.8907533752,53.0784359917],[-2.8679795767,53.0287824006],[-2.7184643614,52.9773945465],[-2.7688251825,52.9158214912],[-2.9696948098,52.969304868],[-3.0635967682,52.9400495265],[-3.1611621211,52.8887223851],[-3.1741391512,52.8111317165],[-3.1423361989,52.7798906372],[-3.039787134,52.7583893973],[-3.0110853183,52.7384358531],[-3.0520832183,52.7043420884],[-3.0677642504,52.6604485854],[-3.100030219,52.6180042649],[-3.1330399977,52.5872057571],[-3.1193443032,52.521500293],[-3.0200693774,52.5698453074],[-3.031099459,52.5252763346],[-3.0479301529,52.5013374851],[-3.1330307777,52.4992882018],[-3.1939440797,52.4781647424],[-3.2428622077,52.4441762783],[-3.2244537043,52.4148050551],[-3.0486514231,52.3471115264],[-2.9819270838,52.3519391541],[-2.9715520479,52.3527741448],[-2.9523932804,52.3499102864],[-2.9553689639,52.345400588],[-2.9658394247,52.3309709329],[-2.9996514353,52.3246210805],[-3.0008850629,52.3047486933],[-3.0110590588,52.287584573],[-2.9934533322,52.2758902256],[-2.9512550598,52.2723084293],[-2.9686073596,52.2582804653],[-2.9951390168,52.2589502328],[-3.005178106,52.2641166895],[-3.0172570152,52.2602012132],[-3.040073813,52.2522878927],[-3.0413792944,52.2391082404],[-3.069052483,52.2339357647],[-3.0725204954,52.2097199269],[-3.0916921711,52.2005126612],[-3.095151634,52.1907110083],[-3.1159756342,52.1670503162],[-3.1058230959,52.162070745],[-3.090191517,52.1630349082],[-3.0746516362,52.1660646467],[-3.0657207603,52.1595780252],[-3.078385355,52.146724515],[-3.1193879489,52.1358167823],[-3.1303857602,52.1302343344],[-3.1214453289,52.1273257573],[-3.1029487737,52.1208190802],[-3.1024308559,52.1093322883],[-3.1189402715,52.1011537019],[-3.1125957994,52.0851443956],[-3.1130133439,52.0708559841],[-3.0861961572,52.0527398587],[-3.0851021093,52.0375290762],[-3.0804784419,52.0139578695],[-3.0554974368,51.9848116793],[-3.0194737772,51.9584196661],[-2.9964213642,51.929967863],[-2.9705104707,51.9337355815],[-2.9658737695,51.9109444305],[-2.9071140299,51.9293700204],[-2.8754694956,51.9426938125],[-2.8428177918,51.924003656],[-2.8212296972,51.9108531421],[-2.7854844006,51.8905539519],[-2.7596804602,51.8848778827],[-2.7700846652,51.8693018261],[-2.7548035337,51.8583178051],[-2.7414064864,51.8483839833],[-2.6606056942,51.8415502747],[-2.6470817449,51.8325176284],[-2.6535615428,51.8133128012],[-2.6684218189,51.8043982595],[-2.6682743812,51.782938037],[-2.6675241171,51.7688725719],[-2.6593909888,51.736744432],[-2.6723410292,51.7283878649],[-2.6629589973,51.7077297562],[-2.6652288167,51.6945087323],[-2.6640800769,51.6776399763],[-2.6540892674,51.6631343572],[-2.6547373561,51.6491483848],[-2.6311943503,51.6078429014],[-2.8607082757,51.4877422936],[-3.2192653062,51.3246112832]]}'
+
+wales_sf <- geojson_sf(wales_json)
+
+wales_sf = st_as_sf(wales_sf)
+
+wales_sf = wales_sf %>% st_cast('POLYGON')
+
+
+wales_sf = wales_sf %>% st_set_crs(4326)
+
+spo_women_sf = withtext %>% 
+ #filter(from_id %in% spo_women_vec) %>% 
+  mutate(location = str_replace_all(location, "&#x0027;", "'")) %>% 
+  left_join(sp_coordinates, by = c('location' = 'original_label')) %>% 
+  mutate(coordinates_latitude.y = as.numeric(coordinates_latitude.y))%>% 
+  mutate(coordinates_longitude.y = as.numeric(coordinates_longitude.y)) %>% 
+  filter(!is.na(coordinates_latitude.y))  %>% 
+  filter(!is.na(coordinates_longitude.y))  %>% 
+  filter(coordinates_latitude.y != 'NA')%>% 
+  filter(coordinates_longitude.y != 'NA') %>% 
+  st_as_sf(coords = c('coordinates_longitude.y', 'coordinates_latitude.y'))
+
+spo_women_sf = spo_women_sf  %>% st_set_crs(4326)
+
+spo_women_sf %>% st_join(wales_sf, left = F) %>% View()
+```
+
+Other prominent places include Lisbon, where the Queen-Regent of Portugal Luisa de Guzmán wrote numerous times to her son-in-law, Charles II; Hamburg, mostly letters sent from Lady Utricia Swann to Joseph Williamson, and Great Yarmouth, thanks to the abovementioned Ann Bower. Dublin also features, and here the four letters written by Susanna Durham stick out: in 1675 she wrote repeatedly to Secretary of State Joseph Williamson trying to secure employment for her husband, who had been stationed in Inis Boffin an island off the west coast of Ireland which she described as 'the furthermost place of this kingdom'.[^23] The farthest-off letter, from London's perspective, is that sent by Jane Wyche, wife of Peter, Ambassador to the Ottoman Empire from 1627--1641, to Francis Windebank, congratulating him on his appointment as Secretary.[^24]
+
+[^23]: Susanna Durham to Sir Joseph Williamson, 17 April 1676, SP 63/337 f.100.
+
+[^24]: Jane, Lady Wyche to Sir Francis Windebank, 06 April 1633, SP 16/236 f.32.
+
+# Women mentioned in letters:
+
+Finding *mentions* of women in the SPO descriptions, or abstracts, is another worthwhile task. Others have done this work [manually](https://onlinelibrary.wiley.com/doi/full/10.1111/lic3.12388), but it's not currently feasible to go through all 160,000 letters in the State Papers by hand and note all mentions of women. The approach we took was to use a Python library called [SpaCy](https://spacy.io), which annotates text using Named Entity Recognition (NER): an automatic method for detecting parts of text such as people, organisations, or places. First we ran the abstracts through the SpaCy algorithm, and then filtered the results for first names found in the list of womens' names described above.
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+female_names = read_csv('/Users/Yann/Documents/GitHub/spo_gender/female_names.csv', col_names = F)
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+load('/Users/Yann/Documents/non-Github/spacyR_test/text_df')
+
+women_mentions = text_df %>% filter(str_detect(token, paste0(tolower(female_names$X1), collapse = "\\s|"))|str_detect(token, paste0(tolower(female_names$X1), collapse = "|\\s"))|str_detect(token, "queen")) %>% filter(!str_detect(token, "george|richard|john|peter|henry|majesty|chichester|grace|blackborne|douglas|lorraine|vane|elias|robert|granard|viscount|chester|rochester|oliver|bennet|deane|manchester|evans|william|marcus|thomas|captain|swann|rochelle|davis|tyrconnell|danes|stevens|reynolds|bernard|jack|nicholas|ambrose|rumbold|tobie|cary|valentine|mr\\s|queensberry|colonel|reignold|lambert|southwold"))
+```
+
+This data is very messy, because SpaCy picks up lots of non-names, and these have to be filtered out. Out of about 340,000 name mentions, about 6,000 are identified as belonging to women, plus another 3,000 instances of the word 'Queen' without any more identifying information. Not all of these are references to actual women. The first on the list after 'Queen' is **Mary Rose**, which is the name of a ship from where letters were sent in the 1640s.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(flextable)
+women_mentions %>% group_by(token) %>% tally() %>% arrange(desc(n)) %>% head(10) %>% flextable() %>% theme_vanilla() %>% autofit() %>% fit_to_width(max_width = 10) %>% set_table_properties( layout = "autofit") %>% width(j = c(1), width = 8)
+```
+
+In fact, the first highest-ranking 'genuine' reference to a woman is **Queen Elizabeth**, perhaps surprisingly for a dataset which starts on the date of her death. These mentions are generally found in letters involving legal matters, usually explaining some background information to a suit by starting with 'in the reign of Queen Elizabeth...'. Many of the others in the top 100 list above demonstrate the difficulty of getting good results this way: **Sarah Bardsey** is actually a sender and recipient of letters rather than a mentioned person, something which has not been caught by the automatic methods. The mentions of **Henrietta Maria** are split between the [ship](https://threedecks.org/index.php?display_type=show_ship&id=60) and the [person](https://en.wikipedia.org/wiki/Henrietta_Maria); the references to **Saint Mary's** are to various churches, and **Saint Helen's** is a town in Merseyside.
+
+Slightly further down the list we come to more genuine references to women. **Lady Elizabeth** mostly refer to Elizabeth Stuart. She is mentioned in letters from Sir John Harington, who for example asked Robert Cecil if she could be brought to Whitehall from his house in Kew, as his son was showing signs of measles[^25], letters of news relating to her suitors[^26], and finally news of her journey with the Count of Palatine back to Germany, and their reception across Europe.
+
+[^25]: Sir John Harington to Robert Cecil, Earl of Salisbury, 05 March 1611, SP 14/62 f.24.
+
+[^26]: Sir Jn. Benet to Dudley Carleton, Viscount Dorchester, 15 July 1611, SP 14/65 f.53.
+
+There's a group of correspondents interested in [Lady Elizabeth Hatton](https://en.wikipedia.org/wiki/Elizabeth_Hatton), who has 42 mentions. She featured regularly in letters of news from the court. **Lady Pembroke** is [Lady Anne Clifford](https://en.wikipedia.org/wiki/Lady_Anne_Clifford), who was the hereditary High Sheriff of Westmoreland, and in control of the [pocket borough](https://en.wikipedia.org/wiki/Rotten_and_pocket_boroughs) of Appleby. Most of the letters mentioning her were written by correspondents to Joseph Williamson, who put himself forward as a candidate to be Appleby's MP in 1668, such as this one to him from Daniel Fleming:
+
+> I wrote to Lady Pembroke and got the rest of the justices' hands to the letter, and send copies of it, and of her reply, that you may know how things stand. Unless you can secure Lady Pembroke, which I fear will be hard to do, you will have a cold appearance of the electors of Appleby, since they dare not go any way but that chalked out by my lady, who is as absolute in that borough as any are in any other. If you could get recommended to her by Lady Thanet, in the place of one of her sons, or could get the Countess to stand neuter, I am confident you would carry it; but I fear she will either nominate one of her grand-children or Anthony Lowther, for whom Sir John appears. Sir George [Fletcher] and Dr. Smith have been very active in your behalf.[^27]
+
+[^27]: Daniel Fleming to Sir Joseph Williamson, 27 January 1668, SP 29/233 f.137.
+
+It wasn't successful: her endorsement and therefore the election went to her grandson, Thomas Tufton, but this episode is an excellent example of how a woman's influence in the State Papers would be hidden, unless we look beyond the authors and recipients of letters.
+
+# Conclusions
+
+Women are underrepresented in the State Papers, even when compared to other sources of early modern correspondence, making it all the more worthwhile to tag or otherwise distinguish their letters so they can be more easily found. By highlighting their letters separately, we learn more about their role in the early modern state, and return to them some of the agency suppressed by the structure of a state archive. Women were important in these networks. What becomes clear using these methods is that women from all backgrounds, from the daughter of a king to the owner of a coffee shop, were heavily involved in state intelligence networks, whether secret or those sharing public news. Women could serve as important back-channels of communication when an 'official' line of communication was blocked, their influence was called on to request favours on a third party's behalf, and they were instrumental in petitioning the state on behalf of themselves, their husbands, sons, or brothers.
+
+Highlighting *mentions* of women in letters of others presents a more difficult, but arguably more rewarding task, because it is one way to solve the problem that women are far less likely to have their voices present in the 'standard' sender/recipient metadata of the State Papers: extracting mentions is a way of highlighting the influence of women in a world where nearly all official government business was articulated---though not necessarily carried out---by men, rendering women artificially silent.
+
+As far as the methods are concerned, a mix of automatic and manual checking seems to work well to capture most letters written by or to women. The recognition of mentioned women's names in the less structured text of the abstracts and descriptions feels like a harder problem to solve. We hope to try training a classifier to recognise men and women's names, customised to early modern text, using the [Stanford NER](https://nlp.stanford.edu/software/CRF-NER.html), which would still likely be imperfect but may find some more interesting links.
+
+# Further reading:
+
+[Crime and Women's Petitions to the post-Restoration Stuart Monarchs](https://petitioning.history.ac.uk/blog/2021/01/crime-and-womens-petitions-to-the-post-restoration-stuart-monarchs-three-case-studies/)
+
+[Female Involvement, Membership, and Centrality: A Social Network Analysis of the Hartlib Circle](https://onlinelibrary.wiley.com/doi/full/10.1111/lic3.12388)
+
+[Invisible Agents: Women and Espionage in Seventeenth-Century Britain](https://global.oup.com/academic/product/invisible-agents-9780198849421?cc=nl&lang=en&)
+
+[Women's Early Modern Letters Online](http://emlo-portal.bodleian.ox.ac.uk/collections/?page_id=2595)
+
+[Kim McClean-Fiander and James Daybell: New directions in early modern women's letters: WEMLO's challenges and possibilities](https://www.taylorfrancis.com/chapters/edit/10.4324/9781315546919-25/new-directions-early-modern-women-letters-wemlo-challenges-possibilities-kim-mclean-fiander-james-daybell)

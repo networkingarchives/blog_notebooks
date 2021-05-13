@@ -1,0 +1,9 @@
+---
+title: "Measuring shortest-path journeys for ships"
+output: html_notebook
+---
+ 
+## Follow on from the itineraries - ships pose a particular problem.
+
+This should be a technical one with code to complement the article
+

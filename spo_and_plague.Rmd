@@ -1,0 +1,15 @@
+---
+title: "SPO and Plague"
+output: html_notebook
+---
+
+### How many mentioning words? 
+
+### Some examples
+
+### See the movement of the disease?
+
+```{r}
+withtext %>% filter(str_detect(values, "(?i)plague|sickness|distempter"))
+```
+

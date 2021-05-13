@@ -1,0 +1,148 @@
+---
+title: "Blog Post: Translating across Programming Languages"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+library(tidyverse)
+library(snakecase)
+library(knitr)
+
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+location <- read_csv("~/Downloads/EMLO/location.csv", col_types = cols(.default = "c"))
+person <- read_csv("~/Downloads/EMLO/person.csv")
+work <- read_csv("~/Downloads/EMLO/work.csv", col_types = cols(.default = "c"))
+
+colnames(location) = to_snake_case(colnames(location))
+colnames(person) = to_snake_case(colnames(person))
+colnames(work) = to_snake_case(colnames(work))
+```
+
+### Dealing with multiple languages is not a new problem
+
+Correspondence networks have always grappled with the problem of communicating across multiple langauges: The metadata in [Early Modern Letters Online](http://emlo.bodleian.ox.ac.uk) has 23,176 letters marked as having been written in Latin (often a common language for the natural sciences, as well as diplomacy) and 14,998 written  in French (also frequently the language of diplomacy until the 17th century). The number of letters in French were out of proportion to the number of letters marked as coming from that country (though we must point out the number of NA values)
+
+
+```{r lang, echo=FALSE, message=FALSE, warning=FALSE}
+
+work %>% 
+  group_by(language_s) %>% 
+  tally() %>% 
+  arrange(desc(n)) %>%
+  head(9) %>% 
+  rename(Language = language_s, Records = n) %>% ggplot() + geom_col(aes(reorder(Language, Records), Records), alpha = .8) + coord_flip() + theme_minimal() + labs(title = "Given languages in EMLO letter metadata", x = NULL)+ theme(panel.grid.major.y = element_blank(), panel.grid.major.x = element_line(linetype = 'dashed'))
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE,  fig.cap="Letters by country: though there are a large number of NA values"}
+work %>% 
+  left_join(location, by = c('origin_emlo_id' = 'place_id')) %>%
+  mutate(country = ifelse(str_detect(country, 'Netherlands'), 'Netherlands', country)) %>% 
+  group_by(country) %>% 
+  tally() %>% 
+  arrange(desc(n)) %>%
+  head(9) %>% 
+  rename(Country = country, Records = n) %>% ggplot() + geom_col(aes(reorder(Country, Records), Records), alpha = .8) + coord_flip() + theme_minimal() + labs(title = "Letters in EMLO, by Country", x = NULL) + theme(panel.grid.major.y = element_blank(), panel.grid.major.x = element_line(linetype = 'dashed'))
+```
+
+
+One way to deal with communication across multiple languages is to adopt a _Lingua Franca_: the majority of these letter-writers and receipients presumably did not speak either French or Latin as their mother tongue, but having a shared standard meant they could conduct business and exchange ideas easily. 
+
+Where a common language was not used, early modern states used official translators to conduct diplomacy: England's 'secretary of foreign tongues', was a very senior position in the adminstration whose job it was to compose foreign correspondence in Latin to be sent overseas to European states (John Milton famously held this position in the 1650s).
+
+### A Multi-Lingual Project
+
+Network Archives is multi-lingual in a number of ways: the letters in EMLO were written in English, Latin, French, Dutch, German, Italian, Spanish, Ancient Greek, Welsh and Irish, amongst others, and some members of the team speak multiple languages, a huge benefit for a project working with early modern correspondence.
+
+We are a project also using computational methods to study correspondence networks, and are also multi-lingual with respect to the programming languages we use. This could in theory cause problems of interpretation or translation. One way to work around this would be to adopt a programming _Lingua Franca_: all agreeing to code in Python, for example, which is probably the closest thing to a lingua franca in the data science or digital humanities at the moment. This has the advantage of ensuring that all those working on the technical side of the project can understand or edit code produced by others. 
+
+On the other hand, there are potential disadvantages: for some it might mean learning a new language, and it could also mean missing out on particularly useful features or packages which only exist in one language or the other.
+
+On this project, I prefer to code in R, and Sebastian in Python. Both of these languages have strengths and weaknesses, so ideally combining both would bring out the best in each. For example, R’s plotting functions are recognised as particularly good, especially for publication-quality charts and maps, and Python has a wider adoption and support, and the most cutting edge work in machine learning and neural networks is mostly developed with Python in mind.
+
+Rather than adopt a lingua franca, then, we have taken the approach of using an intermediary as a translator. R allows for Python scripts and functions to be ported directly into R, using a package called ‘Reticulate’, which we might call our 'Secretary of Foreign Coding Tongues'. Basically, Python scripts can be called in R, and then the functions within in them are automatically translated into R objects. Inputs created in each language are automatically converted into the other: so, for example, you could create a character vector in R and feed it to a Python function, which will interpret it as a list. The following R code demonstrates how this works, in case you'd like to try it. You'll need to understand the basics of both langauges to follow along.
+
+### Translating Python in R and Vice-versa
+
+Load the reticulate library
+
+```{r}
+library(reticulate)
+```
+
+The trick is to turn python scripts into functions if they are not already, so that they can be imported and called by reticulate. This might just mean making very small changes to existing python scripts - at the most basic you can just add ```def fake_function():```  and move the rest of your script over one tab.
+
+With the function ```use_python()```, point R to your Python file:
+
+```{r}
+use_python("/Users/Yann/Documents/non-Github/reticulate_test/env/bin/python3.7")
+```
+
+First write a function in python and save it as a script called py_script.py. The one below just takes two lists of numbers and sums them:
+
+```{python eval=FALSE}
+def add_numbers(list_1, list_2):
+  x = [x + y for x, y in zip(list_1, list_2)]
+  x =sum(x)
+  return x
+```
+
+Next use ```source_python()``` to import the functions from that script into R:
+
+```{r}
+source_python('py_script.py')
+```
+
+To test it: create some vectors in R:
+
+```{r}
+a = c(1,10,11)
+b = c(10,100,200)
+```
+
+Call the Python function. Reticulate turns the R objects into Python lists:
+
+```{r}
+add_numbers(a,b)
+```
+
+You can also use Python directly within an R notebook:
+
+```{python}
+a = [1,5,6,9]
+b = [10,20,30,40]
+def add_numbers(list_1, list_2):
+  x = [x + y for x, y in zip(list_1, list_2)]
+  x =sum(x)
+  return x
+  
+add_numbers(a,b)
+
+```
+
+
+This example is obviously very simple, but it means that we've been able to communicate across languages, and use the best of both. I've been able to import some of Sebastian's sophisticated network analysis algorithms into R and output results which I can manipulate or plot directly. 
+
+It's been even more powerful when combined with another R library called Shiny - one which allows for sophisticated user interfaces.  With this, we've been able to develop user interfaces for exploratory tools that interact with both Python and R code, with a user-friendly  design so that they can be used by members of the team less comfortable with running scripts through a command line.
+
+If you're familiar with Shiny, you'll need to load a Python virtual environment, including any packages you need, into your application before running any Python code, using the following:
+
+```{r, eval = F}
+ virtualenv_create(envname = "python_environment", 
+                   python= "python3")
+ # Explicitly install python libraries 
+ # that you want to use, e.g. pandas, numpy
+ virtualenv_install("python_environment", 
+                    packages = c('matplotlib','networkx'))
+# # Select the virtual environment
+ use_virtualenv("python_environment", 
+                required = TRUE)
+```
+
+Once this is done you can use the ```source_python()``` function to import any python functions into a Shiny application and use them on R objects. We've used this to allow user selection to a function with a nice drop-down menu, perform network calculations with Python scripts, and then translate back to R to visualise the results using interactive maps and network graphs.
+
+Shiny uses Javascript, so technically we've been translating and interpreting between _three_ programming language. We're catching up with the 17th century, and it's an impressive job by our 21st century 'Secretary of Foreign Tongues'.

@@ -1,0 +1,166 @@
+---
+title: "Post days"
+output:
+  html_document:
+    df_print: paged
+---
+# Data Journey: Post Days
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+library(tidyverse)
+library(snakecase)
+library(knitr)
+library(lubridate)
+
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+location <- read_csv("~/Downloads/EMLO/location.csv", col_types = cols(.default = "c"))
+person <- read_csv("~/Downloads/EMLO/person.csv")
+work <- read_csv("~/Downloads/EMLO/work.csv", col_types = cols(.default = "c"))
+
+colnames(location) = to_snake_case(colnames(location))
+colnames(person) = to_snake_case(colnames(person))
+colnames(work) = to_snake_case(colnames(work))
+```
+
+There was a really interesting twitter thread by @thstockinger recently, looking at post days. I wondered if I could do something systematically with the data we’re using for the @networkingarchives project.
+
+The Networking Archives project has dates of sending for a huge number of letters from thousands of places all over Europe: Is it possible to figure out likely postal days using this data?
+
+The best place to start is to pick a fairly arbitrary set of dates and a single place, and check the weekday consistency of the date sent. 
+
+To take an example: in the [Early Modern Letters Online](http://emlo.bodleian.ox.ac.uk) metadata, between 1640 and 1650, there are about five hundred letters sent from Wolfenbüttel in Lower Saxony, by 11 different individuals. Over four hundred of these were sent on a Tuesday, so I think we can safely say that was the post day (I picked these towns just because they were mentioned in the twitter thread, not to make a comparison, as it’s a completely different time period and set of correspondence).
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+work %>% 
+  filter(origin_name == 'Wolfenbüttel, Lower Saxony, Germany') %>% 
+  filter(year_date %in% c(1640:1650)) %>% 
+  mutate(standard_gregorian_date = ymd(standard_gregorian_date)) %>% 
+  mutate(weekday = wday(standard_gregorian_date, label = T)) %>% 
+  filter(!is.na(weekday)) %>%
+  group_by(weekday) %>% 
+  tally() %>% ggplot() + geom_col(aes(weekday, n), alpha = .9) +  
+  theme_minimal() + 
+  labs(title = "Letters sent from Wolfenbüttel, by day of the week, 1640-1650", x = NULL, y = 'letters sent') + theme(panel.grid.major.x = element_blank(), panel.grid.major.y = element_line(linetype = 'dashed'))
+
+```
+
+We have fewer letters (about 75) from Helmstedt, this time from 17 individuals, in the same date range, but again, the postal day is pretty clear - it’s either Monday, or letter authors are writing the day before the post and dating on the day of writing rather than posting.
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+work %>% 
+  filter(origin_name == 'Helmstedt, Lower Saxony, Germany') %>% 
+  filter(year_date %in% c(1640:1650)) %>% 
+  mutate(standard_gregorian_date = ymd(standard_gregorian_date)) %>% 
+  mutate(weekday = wday(standard_gregorian_date, label = T)) %>% 
+  filter(!is.na(weekday)) %>%
+  group_by(weekday) %>% 
+  tally() %>% ggplot() + geom_col(aes(weekday, n), alpha = .9) +  
+  theme_minimal() + 
+  labs(title = "Letters sent from Helmstedt, by day of the week, 1640-1650",x = NULL, y = 'letters sent')+ theme(panel.grid.major.x = element_blank(), panel.grid.major.y = element_line(linetype = 'dashed'))
+```
+
+In some big urban areas, the day of the week often seems much less consistent. The public post day was Tuesday, but London had a wide variety of alternative routes for correspondence, including private carriers and messengers (John Taylor’s Carriers Cosmographie, a guide to London's private carriers written in 1637, contains information on hundreds of carrier services leaving on a range of days of the week). 
+
+This means that we might expect the days of the week on which letters were sent to be more spread out, and that's what we find in the data:
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+work %>% 
+  filter(str_detect(origin_name, 'London')) %>% 
+  filter(year_date %in% c(1640:1650)) %>% 
+  mutate(standard_gregorian_date = ymd(standard_gregorian_date)) %>% 
+  mutate(weekday = wday(standard_gregorian_date, label = T)) %>% 
+  filter(!is.na(weekday)) %>%
+  group_by(weekday) %>% 
+  tally() %>% ggplot() + geom_col(aes(weekday, n), alpha = .9) +  theme_minimal() + labs(title = "Letters sent from London, by day of the week, 1640-1650",x = NULL, y = 'letters sent') + theme(panel.grid.major.x = element_blank(), panel.grid.major.y = element_line(linetype = 'dashed'))
+```
+
+
+However, it’s not always the case. In Paris across the same period, the post day was very clearly Saturdays. 
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+work %>% filter(origin_name == 'Paris, Île-de-France, France') %>% 
+  filter(year_date %in% c(1640:1650)) %>% 
+  mutate(standard_gregorian_date = ymd(standard_gregorian_date)) %>% 
+  mutate(weekday = wday(standard_gregorian_date, label = T)) %>% 
+  group_by(weekday) %>% 
+  tally() %>% ggplot() + geom_col(aes(weekday, n))+  theme_minimal() + labs(title = "Letters sent from Paris, by day of the week, 1640-1650",x = NULL, y = 'letters sent') + theme(panel.grid.major.x = element_blank(), panel.grid.major.y = element_line(linetype = 'dashed'))
+```
+
+How do changes to the postal service affect the days of letters sent? In London an extra public post, leaving on Saturdays, was added in 1649 (incidentally, the service spawned a new weekly newspaper, printed on Fridays especially to be sent to other parts of England by the new Saturday post). Did this make any difference to the distribution across days of the week (I’ll explain why I stopped at 1654 in a sec)?
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+work %>% 
+  filter(str_detect(origin_name, 'London')) %>% 
+  filter(year_date %in% c(1650:1654)) %>% 
+  mutate(standard_gregorian_date = ymd(standard_gregorian_date)) %>% 
+  mutate(weekday = wday(standard_gregorian_date, label = T)) %>% 
+  filter(!is.na(weekday)) %>%
+  group_by(weekday) %>% 
+  tally() %>% ggplot() + geom_col(aes(weekday, n), alpha = .9) +  theme_minimal() + labs(title = "Letters sent from London, by day of the week, 1650-1654",x = NULL, y = 'letters sent') + theme(panel.grid.major.x = element_blank(), panel.grid.major.y = element_line(linetype = 'dashed'))
+```
+
+There's not a huge change (and there's actually not a lot of data), but there are slightly more letters sent on a Saturday, at the expense of Wednesday and Thursday. 
+
+### Using data to find postal day changes
+
+Computational tools can allow us to be a bit more systematic, and look for interesting stories within the metadata which might point to important events in communications history. We know that post days changed over time, so I calculated the change from one year to another for each city in EMLO, for each day of the week. So for example, if 15% of all letters were sent on a Monday in 1650, and 50% in 1651, that would register as a 35 point increase. Sorting by the highest increases over the entire dataset might point to cases where the post switched or something else caused a change in the postal patterns.
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+library(DataCombine)
+library(lubridate)
+# weekday_change = work %>%
+#   filter(year_date %in% c(1600:1700)) %>%
+#   mutate(standard_gregorian_date = ymd(standard_gregorian_date)) %>%
+#   mutate(weekday = wday(standard_gregorian_date, label = T)) %>%
+#   mutate(origin_name = if_else(str_detect(origin_name, 'London'), 'London', origin_name)) %>%
+#   group_by(year_date, origin_name, weekday) %>%
+#   tally() %>%
+#   group_by(year_date, origin_name) %>%
+#   filter(!is.na(year_date)) %>%
+#   mutate(percent = n/sum(n)*100) %>%
+#   arrange(weekday, year_date, origin_name) %>%
+#   group_by(weekday) %>%
+#   change('percent', GroupVar = 'origin_name', type = 'absolute') %>%
+#   filter(n>10) %>% filter(!is.na(origin_name)) %>% select(year_date, origin_name, weekday, change = `percent_PChangeFrom-1`)
+
+load('weekday_change')
+load('weekday_change_all')
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+weekday_change %>% 
+  arrange(desc(change)) %>% 
+  filter(origin_name != 'England') %>% 
+  distinct(origin_name, .keep_all = T) %>% 
+
+  left_join(location %>% 
+              select(place_name, primary_place_name_city_town_village), by = c('origin_name' = 'place_name'))  %>% 
+    mutate(primary_place_name_city_town_village = ifelse(is.na(primary_place_name_city_town_village), 'London', primary_place_name_city_town_village)) %>% 
+  head(10) %>% 
+  select(year = year_date, location = primary_place_name_city_town_village, weekday, change) %>% 
+    kable()
+```
+
+There are lots of intriguing stories here. Ninth in the list is London: in 1654 Cromwell granted a monopoly to the ‘Office of Postage’, and prohibited the private carrying of letters - by 1655 the new Postmaster general, John Thurloe, had begun to integrate this new state-run postal service into his extensive spying network. This led to an immediate—though not long-lasting—change in the most frequent day of the week for dating letters. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+weekday_change_all %>% filter(origin_name == 'London') %>% filter(weekday == 'Fri') %>% filter(year_date %in% c(1650:1660)) %>% arrange(year_date) %>% ggplot(aes(as.Date(year_date, '%Y'), percent)) + geom_line(size = .8, alpha = .8) + geom_point() +  theme_minimal() + labs(title = 'Letters sent on Fridays from London, 1650-1660',x = NULL, y = 'letters sent') + theme(panel.grid.major.x = element_blank(), panel.grid.major.y = element_line(linetype = 'dashed'))
+```
+
+This had a pretty significant effect on the way Londoners communicated with the rest of the world, and on their sense of time and periodicity. Perhaps it also signified an increase in the sense of surveillance: that the post was something regulated and ‘official’.
+
+Looking again at the table, there are lots of other single years when the postal day most likely switched from one to another: for example, in Stuttgart in 1646, almost all letters were sent on Wednesday, the following year nearly all on a Friday, and in 1648 nearly all sent on a Wednesday again. 
+
+Postal days are complicated, and it might often the case that a switch is because of changing writing practices by a particular author, or just that most letters in a following year were written by an entirely different author with different habits. but it can point us towards periods when interesting changes happened with the post, either driven by commericial or political interests. 
+
+### Mapping postal days
+
+We also have geographic information, but trying to understand postal days across both different places and different times, during a period of huge changes to the European communications network, is very complicated indeed.
+
+One way to map likely post-day candidates would be to: 
+Take a single year (or some other small-ish time unit)
+Extract all places in that year which a) has a significantly large number of letters to have confidence in the statistics and b) has a significant percentage of all letters posted on a single day. Mapping these can give us the most _likely_ post days for many towns in Europe in a given year. 
+

@@ -1,0 +1,32 @@
+Type: Compendium
+Package: R and Wikidata
+Title: What the Package Does (One Line, Title Case)
+Version: 0.0.1
+Authors@R: 
+    person(given = "First",
+           family = "Last",
+           role = c("aut", "cre"),
+           email = "first.last@example.com")
+Description: It's Just a Notebook
+License: What license it uses
+Depends: 
+    ggsflabel,
+    lubridate,
+    plyr,
+    reticulate,
+    rmarkdown,
+    rnaturalearth,
+    rnaturalearthdata,
+    rsconnect,
+    sf,
+    stringr,
+    tidyr,
+    tidyverse,
+    units,
+    WikidataQueryServiceR
+Remotes: 
+    r-spatial/sf,
+    rstudio/rmarkdown,
+    yutannihilation/ggsflabel
+Encoding: UTF-8
+LazyData: true

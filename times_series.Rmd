@@ -1,0 +1,413 @@
+---
+title: "Times series Forecasting"
+output: html_notebook
+---
+
+```{r}
+library(snakecase)
+work <- read_csv("~/Downloads/EMLO/work.csv", col_types = cols(.default = "c"))
+colnames(work) = to_snake_case(colnames(work))
+
+volume_per_day = work %>% filter(year_date >1640& year_date <1660) %>%  group_by(author_emlo_id) %>% add_tally() %>% arrange(desc(n)) %>% filter(n>500) %>% group_by(author_emlo_id, standard_gregorian_date) %>% tally(wt = NULL)
+```
+
+```{r}
+library(tidyquant)
+```
+```{r}
+k <- 1:28
+col_names <- paste0("lag_", k)
+```
+
+```{r}
+tidyverse_lags <- volume_per_day %>% mutate(standard_gregorian_date = ymd(standard_gregorian_date)) %>% 
+    tq_mutate(
+        select     = n,
+        mutate_fun = lag.xts,
+        k          = 1:28,
+        col_rename = col_names
+    )
+
+
+tidyverse_count_autocorrelations <- tidyverse_lags %>%
+    gather(key = "lag", value = "lag_value", -c( standard_gregorian_date, n)) %>%
+    mutate(lag = str_sub(lag, start = 5) %>% as.numeric) %>%
+    group_by(lag) %>%
+    summarize(
+        cor = cor(x = n, y = lag, use = "pairwise.complete.obs"),
+        cutoff_upper = 2/(n())^0.5,
+        cutoff_lower = -2/(n())^0.5
+        )
+
+```
+```{r}
+tidyverse_count_autocorrelations %>%
+    ggplot(aes(x = lag, y = cor)) +
+    # Add horizontal line a y=0
+    geom_hline(yintercept = 0) +
+    # Plot autocorrelations
+    geom_point(size = 2) +
+    geom_segment(aes(xend = lag, yend = 0), size = 1) +
+    # Add cutoffs
+    geom_line(aes(y = cutoff_upper), color = "blue", linetype = 2) +
+    geom_line(aes(y = cutoff_lower), color = "blue", linetype = 2) +
+    # Aesthetics
+    expand_limits(y = c(-1, 1)) +
+    scale_color_tq() +
+    theme_tq() +
+    labs(
+        title = paste0("Tidyverse ACF Plot: Lags ", rlang::expr_text(k)),
+        subtitle = "Appears to be a weekly pattern",
+        x = "Lags"
+    ) +
+    theme(
+        legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+```
+```{r}
+tidyverse_absolute_autocorrelations <- tidyverse_count_autocorrelations %>%
+    ungroup() %>%
+    mutate(
+        lag = as_factor(as.character(lag)),
+        cor_abs = abs(cor)
+        ) %>%
+    dplyr::select(lag, cor_abs) %>%
+    group_by(lag) 
+tidyverse_absolute_autocorrelations
+```
+```{r}
+break_point <- 1.5*IQR(tidyverse_absolute_autocorrelations$cor_abs) %>% signif(3)
+p = tidyverse_absolute_autocorrelations %>%    
+    ggplot(aes(x = fct_reorder(lag, cor_abs, .desc = TRUE) , y = cor_abs)) +
+    # Add boxplot
+    geom_boxplot(color = palette_light()[[1]]) +
+    # Add horizontal line at outlier break point
+    geom_hline(yintercept = break_point, color = "red") +
+    annotate("text", label = paste0("Outlier Break Point = ", break_point), 
+             x = 24.5, y = break_point + .03, color = "red") +
+    # Aesthetics
+    expand_limits(y = c(0, 1)) +
+    theme_tq() +
+    labs(
+        title = paste0("Absolute Autocorrelations: Lags ", rlang::expr_text(k)),
+        subtitle = "Weekly pattern is consistently above outlier break point",
+        x = "Lags"
+    ) +
+    theme(
+        legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+library(plotly)
+ggplotly(p)
+```
+
+```{r}
+
+top_authors =  work %>% filter(year_date >1640 & year_date <1642) %>%  group_by(author_emlo_id) %>% tally() %>% arrange(desc(n)) %>% head(10 ) %>% pull(author_emlo_id)
+
+volume_per_day = work %>% filter(year_date >1640 & year_date <1642) %>%  group_by(author_emlo_id) %>% add_tally() %>% arrange(desc(n)) %>% group_by(author_emlo_id, standard_gregorian_date) %>% tally(wt = NULL) %>% mutate(standard_gregorian_date = ymd(standard_gregorian_date))%>% filter(author_emlo_id %in% top_authors)
+
+
+```
+
+```{r}
+k <- 1:365
+col_names <- paste0("lag_", k)
+
+tidyverse_lags <- volume_per_day %>% filter(author_emlo_id != '300075') %>% 
+    tq_mutate(
+        select     = n,
+        mutate_fun = lag.xts,
+        k          = 1:365,
+        col_rename = col_names
+    )
+
+
+```
+
+```{r}
+tidyverse_count_autocorrelations <- tidyverse_lags %>%
+    gather(key = "lag", value = "lag_value", -c(author_emlo_id, standard_gregorian_date, n)) %>%
+    mutate(lag = str_sub(lag, start = 5) %>% as.numeric) %>%
+    group_by(author_emlo_id, lag) %>%
+    summarize(
+        cor = cor(x = n, y = lag_value, use = "pairwise.complete.obs"),
+        cutoff_upper = 2/(n())^0.5,
+        cutoff_lower = -2/(n())^0.5
+        )
+tidyverse_count_autocorrelations
+```
+```{r}
+tidyverse_count_autocorrelations %>%
+    ggplot(aes(x = lag, y = cor, color = author_emlo_id, group = author_emlo_id)) +
+    # Add horizontal line a y=0
+    geom_hline(yintercept = 0) +
+    # Plot autocorrelations
+    geom_point(size = 2) +
+    geom_segment(aes(xend = lag, yend = 0), size = 1) +
+    # Add cutoffs
+    geom_line(aes(y = cutoff_upper), color = "blue", linetype = 2) +
+    geom_line(aes(y = cutoff_lower), color = "blue", linetype = 2) +
+    # Add facets
+    facet_wrap(~ author_emlo_id, ncol = 3) +
+    # Aesthetics
+    expand_limits(y = c(-1, 1)) +
+    scale_color_tq() +
+    theme_tq() +
+    labs(
+        title = paste0("Tidyverse ACF Plot: Lags ", rlang::expr_text(k)),
+        subtitle = "Appears to be a weekly pattern",
+        x = "Lags"
+    ) +
+    theme(
+        legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+```
+
+```{r}
+tidyverse_absolute_autocorrelations <- tidyverse_count_autocorrelations %>%
+    ungroup() %>%
+    mutate(
+        lag = as_factor(as.character(lag)),
+        cor_abs = abs(cor)
+        ) %>%
+    select(lag, cor_abs) %>%
+    group_by(lag) 
+tidyverse_absolute_autocorrelations
+```
+```{r}
+break_point <- 1.5*IQR(tidyverse_absolute_autocorrelations$cor_abs) %>% signif(3)
+tidyverse_absolute_autocorrelations %>%    
+    ggplot(aes(x = fct_reorder(lag, cor_abs, .desc = TRUE) , y = cor_abs)) +
+    # Add boxplot
+    geom_boxplot(color = palette_light()[[1]]) +
+    # Add horizontal line at outlier break point
+    geom_hline(yintercept = break_point, color = "red") +
+    annotate("text", label = paste0("Outlier Break Point = ", break_point), 
+             x = 24.5, y = break_point + .03, color = "red") +
+    # Aesthetics
+    expand_limits(y = c(0, 1)) +
+    theme_tq() +
+    labs(
+        title = paste0("Absolute Autocorrelations: Lags ", rlang::expr_text(k)),
+        subtitle = "Weekly pattern is consistently above outlier break point",
+        x = "Lags"
+    ) +
+    theme(
+        legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+```
+
+
+
+
+```{r}
+library(snakecase)
+work <- read_csv("~/Downloads/EMLO/work.csv", col_types = cols(.default = "c"))
+colnames(work) = to_snake_case(colnames(work))
+
+volume_per_day = work %>% filter(year_date >1640& year_date <1660) %>%  group_by(author_emlo_id) %>% add_tally() %>% arrange(desc(n)) %>% filter(n>500) %>% group_by(author_emlo_id, standard_gregorian_date) %>% tally(wt = NULL)
+```
+
+```{r}
+library(tidyquant)
+```
+```{r}
+k <- 1:28
+col_names <- paste0("lag_", k)
+```
+
+```{r}
+tidyverse_lags <- volume_per_day %>% mutate(standard_gregorian_date = ymd(standard_gregorian_date)) %>% 
+    tq_mutate(
+        select     = n,
+        mutate_fun = lag.xts,
+        k          = 1:28,
+        col_rename = col_names
+    )
+
+
+tidyverse_count_autocorrelations <- tidyverse_lags %>%
+    gather(key = "lag", value = "lag_value", -c(author_emlo_id, standard_gregorian_date, n)) %>%
+    mutate(lag = str_sub(lag, start = 5) %>% as.numeric) %>%
+    group_by(author_emlo_id, lag) %>%
+    summarize(
+        cor = cor(x = n, y = lag_value, use = "pairwise.complete.obs"),
+        cutoff_upper = 2/(n())^0.5,
+        cutoff_lower = -2/(n())^0.5
+        )
+
+```
+```{r}
+tidyverse_count_autocorrelations %>%
+    ggplot(aes(x = lag, y = cor, color = author_emlo_id)) +
+    # Add horizontal line a y=0
+    geom_hline(yintercept = 0) +
+    # Plot autocorrelations
+    geom_point(size = 2) +
+    geom_segment(aes(xend = lag, yend = 0), size = 1) +
+    # Add cutoffs
+    geom_line(aes(y = cutoff_upper), color = "blue", linetype = 2) +
+    geom_line(aes(y = cutoff_lower), color = "blue", linetype = 2) +
+    # Aesthetics
+    expand_limits(y = c(-1, 1)) +
+    scale_color_tq() +
+    theme_tq() +
+    labs(
+        title = paste0("Tidyverse ACF Plot: Lags ", rlang::expr_text(k)),
+        subtitle = "Appears to be a weekly pattern",
+        x = "Lags"
+    ) +
+    theme(
+        legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+```
+```{r}
+tidyverse_absolute_autocorrelations <- tidyverse_count_autocorrelations %>%
+    ungroup() %>%
+    mutate(
+        lag = as_factor(as.character(lag)),
+        cor_abs = abs(cor)
+        ) %>%
+    dplyr::select(lag, cor_abs) %>%
+    group_by(lag) 
+tidyverse_absolute_autocorrelations
+```
+```{r}
+break_point <- 1.5*IQR(tidyverse_absolute_autocorrelations$cor_abs) %>% signif(3)
+p = tidyverse_absolute_autocorrelations %>%    
+    ggplot(aes(x = fct_reorder(lag, cor_abs, .desc = TRUE) , y = cor_abs)) +
+    # Add boxplot
+    geom_boxplot(color = palette_light()[[1]]) +
+    # Add horizontal line at outlier break point
+    geom_hline(yintercept = break_point, color = "red") +
+    annotate("text", label = paste0("Outlier Break Point = ", break_point), 
+             x = 24.5, y = break_point + .03, color = "red") +
+    # Aesthetics
+    expand_limits(y = c(0, 1)) +
+    theme_tq() +
+    labs(
+        title = paste0("Absolute Autocorrelations: Lags ", rlang::expr_text(k)),
+        subtitle = "Weekly pattern is consistently above outlier break point",
+        x = "Lags"
+    ) +
+    theme(
+        legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+library(plotly)
+ggplotly(p)
+```
+
+```{r}
+
+top_authors =  work %>% filter(year_date >1640 & year_date <1642) %>%  group_by(author_emlo_id) %>% tally() %>% arrange(desc(n)) %>% head(10 ) %>% pull(author_emlo_id)
+
+volume_per_day = withtext_tokens %>%
+  group_by(word) %>% add_tally() %>% filter(n>5000) %>% 
+  ungroup() %>% 
+  filter(word %in% words_that_occur_across$word) %>% 
+  mutate(year = year(ymd(X4))) %>% 
+  mutate(date = ymd(X4)) %>%
+  mutate(month = ymd(cut(ymd(X4), 'month'))) %>% 
+  group_by(date) %>% tally(wt = NULL) 
+
+```
+
+```{r}
+library(tidyquant)
+k <- 1:365
+col_names <- paste0("lag_", k)
+
+tidyverse_lags <- volume_per_day %>% filter(!is.na(date)) %>% filter(!is.na(n)) %>% 
+
+    tq_mutate(
+        select     = n,
+        mutate_fun = lag.xts,
+        k          = 1:365,
+        col_rename = col_names
+    )
+
+
+```
+
+```{r}
+tidyverse_count_autocorrelations <- tidyverse_lags %>%
+    gather(key = "lag", value = "lag_value", -c(date, n)) %>%
+    mutate(lag = str_sub(lag, start = 5) %>% as.numeric) %>%
+    group_by(lag) %>%
+    summarize(
+        cor = cor(x = n, y = lag_value, use = "pairwise.complete.obs"),
+        cutoff_upper = 2/(n())^0.5,
+        cutoff_lower = -2/(n())^0.5
+        )
+tidyverse_count_autocorrelations
+```
+```{r}
+tidyverse_count_autocorrelations %>%
+    ggplot(aes(x = lag, y = cor)) +
+    # Add horizontal line a y=0
+    geom_hline(yintercept = 0) +
+    # Plot autocorrelations
+    geom_point(size = 2) +
+    geom_segment(aes(xend = lag, yend = 0), size = 1) +
+    # Add cutoffs
+    geom_line(aes(y = cutoff_upper), color = "blue", linetype = 2) +
+    geom_line(aes(y = cutoff_lower), color = "blue", linetype = 2) +
+    # Add facets
+    # Aesthetics
+    expand_limits(y = c(-1, 1)) +
+    scale_color_tq() +
+    theme_tq() +
+    labs(
+        title = paste0("Tidyverse ACF Plot: Lags ", rlang::expr_text(k)),
+        subtitle = "Appears to be a weekly pattern",
+        x = "Lags"
+    ) +
+    theme(
+        legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+```
+
+```{r}
+tidyverse_absolute_autocorrelations <- tidyverse_count_autocorrelations %>%
+    ungroup() %>%
+    mutate(
+        lag = as_factor(as.character(lag)),
+        cor_abs = abs(cor)
+        ) %>%
+    select(lag, cor_abs) %>%
+    group_by(lag) 
+tidyverse_absolute_autocorrelations
+```
+```{r}
+break_point <- 1.5*IQR(tidyverse_absolute_autocorrelations$cor_abs) %>% signif(3)
+p = tidyverse_absolute_autocorrelations %>%    
+    ggplot(aes(x = fct_reorder(lag, cor_abs, .desc = TRUE) , y = cor_abs)) +
+    # Add boxplot
+    geom_boxplot(color = palette_light()[[1]]) +
+    # Add horizontal line at outlier break point
+    geom_hline(yintercept = break_point, color = "red") +
+    annotate("text", label = paste0("Outlier Break Point = ", break_point), 
+             x = 24.5, y = break_point + .03, color = "red") +
+    # Aesthetics
+    expand_limits(y = c(0, 1)) +
+    theme_tq() +
+    labs(
+        title = paste0("Absolute Autocorrelations: Lags ", rlang::expr_text(k)),
+        subtitle = "Weekly pattern is consistently above outlier break point",
+        x = "Lags"
+    ) +
+    theme(
+        legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+
+
+ggplotly(p)
+```

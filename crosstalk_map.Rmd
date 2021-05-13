@@ -1,0 +1,45 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+---
+```{r}
+library(tidyverse)
+library(crosstalk)
+library(leaflet)
+library(sf)
+library(lubridate)
+library(snakecase)
+```
+
+```{r}
+work <- read_csv("~/Downloads/EMLO/work.csv", col_types = cols(.default = "c"))
+colnames(work) = to_snake_case(colnames(work))
+location <- read_csv("~/Downloads/EMLO/location.csv", col_types = cols(.default = "c"))
+colnames(location) = to_snake_case(colnames(location))
+
+```
+
+
+```{r}
+work_sf = work %>% 
+  mutate(standard_gregorian_date = ymd(standard_gregorian_date)) %>% filter(year_date %in% 1600:1605) %>% filter(standard_gregorian_date <'1606-01-01') %>% 
+group_by(standard_gregorian_date, origin_emlo_id) %>% tally() %>% filter(!is.na(origin_emlo_id)) %>% left_join(location, by = c('origin_emlo_id' = 'place_id')) %>% filter(!is.na(coordinates_latitude)) %>%
+st_as_sf(coords = c('coordinates_longitude', 'coordinates_latitude'))
+work_sf = work_sf %>% st_set_crs(4326) 
+
+```
+```{r}
+sd <- SharedData$new(work_sf)
+```
+
+```{r}
+filter_slider("date", "", sd, column=~standard_gregorian_date, step=10, width=800)
+leaflet(sd) %>% addTiles() %>%
+  addCircleMarkers(
+                   stroke = FALSE, 
+                   opacity = 0.4,
+                   radius = ~n)
+```
+

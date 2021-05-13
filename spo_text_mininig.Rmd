@@ -1,0 +1,444 @@
+---
+title: "Text Mining State Papers Online Abstracts"
+output:
+  html_document:
+    df_print: paged
+---
+
+### Calendars of State Papers and Networking Archives
+
+Most of the Networking Archives project has been using the *metadata*, or data about, the digitised correspondence from the State Papers Online. Metadata in this sense means everything except the content of the letters: including author names, recipient names, date, place of sending and so on, in the research of seventeenth-century intelligencing. Gale State Papers Online brings together a number of historical primary sources, connecting the original manuscript images from the State Papers with the 'Calendars of State Papers', a printed resource. These printed summaries represent another huge store of data available to us which we also use in the analysis of the data.
+
+The data we're working with has a complicated history. A typical piece of correspondence now in the State Papers Online data started its life as the personal property of a secretary of state, kept in their own private collection. When that secretary died, they were *supposed* to transfer all the documents relating to the state to what was then called the Paper Office: the office, established in 1610, responsible for archiving many types of state documents, not just correspondence but treaties, warrants, legal documents, and so forth.
+
+In practice it was rarely this simple. Secretaries' papers were fraught with complex issues of contested ownership. Today many governments assume that any correspondence by a sitting Head of State or a politician in the course of their working day is public property (with lots of limits for national security, of course). Historically the rules have been much more ambiguous. Is a letter from a diplomat containing personal news, sent to a Secretary of State, personal or private?
+
+Even when it was clear that a document was in some way 'public', politicians and their heirs often resisted the transfer of their libraries to the state, for a variety of reasons. Private documents could expose secrets they would rather stayed buried but also, and more usually, these libraries were valuable assets to be inherited. The wife of Sir Walter Raleigh lobbied to stop the transfer his personal library (and scientific equipment) to the paper office after his execution in 1618. It was, she argued, her son's only inheritance and an important asset for his education. Sometimes these transfers came long after the death of the secretary in question. In the nineteenth century the Conway Papers were 'found', by the future Prime Minister Horace Walpole, and split between the British Library and the newly-established State Paper Office. The Cecil Papers were all retained by the heirs of Robert Cecil, at Hatfield House, where they still remain today, though they have actually made their way to State Papers Online, as we'll see below.
+
+What the Paper Office did manage to get hold of was sorted into various categories and re-arranged over time, had to survive fires, mould, and so forth, and generally sat unloved and mostly unseen on dusty shelves, though historians (such as John Evelyn), did request and get permission to borrow bundles of documents and take them home. It wasn't until the 19th century when efforts were made to make the records more accessible. First, the Public Records Office was established (in 1854 but based on an earlier archival amalgamation in 1838), which moved the records from the Paper Office to a purpose-built archive in Chancery Lane, and made them more accessible to the public.
+
+#### Format of the Calendars
+
+Sort of parallel to this, efforts were made to produce printed summaries of the documents in the archive, in order to make them easier for historians to use. These were large printed volumes, containing descriptions of all of the documents found in the State Papers, organized mostly by reign. They were produced throughout the century, many edited by women, such as Mary Ann Everett Green, and her niece Sarah. History owes these women a huge debt of favour.
+
+<p align="center">
+
+![Front Page of a Calendar of State Papers](Screenshot%202021-04-12%20at%2010.43.37.png){width="300"}
+
+</p>
+
+Digitised copies of these calendars are mostly out of copyright and can be found on Google Books and [archive.org](https://archive.org/details/calendarofstatep05grea/mode/2up). Below is a fairly typical entry. It has the date of the document in the left-hand margin, then an identifier to help find the original document, then usually information on the sender and recipient (and sometimes the place of origin). This is followed by a brief description or summary of the contents, and in this case, followed by noting the number of pages of the original manuscript, and the language if not English.
+
+<p align="center">
+
+![Typical printed calendar entries](Screenshot%202021-04-12%20at%2010.41.49.png){style="align: center" width="500"}
+
+</p>
+
+Alongside the digitised images of the manuscripts themselves, State Papers Online digitised and processed these calendars. They used OCR (Optical Character Recognition) and manually extracted sender/recipient names, dates, and origins, where available, and linked the calendars to the digitised manuscripts. This means you can do text searches in the calendars and link this to the original manuscript image. The metadata Networking Archives is working with is ultimately based on these digitised descriptions.
+
+### Understanding the Calendars with Data Analysis
+
+As anyone who has worked with the calendars will tell you, they have been produced to very different standards and as such they interpret the documents they represent in very different ways. In addition, as there's no inherent logic behind the inconsistencies other than changing editorial policies, it's hard to get a sense of in what way exactly they *are* inconsistent. Data analysis can help with this, by analysing the entire dataset at scale, to understand the changing shape of the printed calendars by time, topic, and office.
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+library(tidyverse)
+spo_raw = read_delim('../../../Documents/MOST RECENT DATA/fromto_all_place_mapped_stuart_sorted', delim = '\t', col_names = F )
+spo_mapped_people = read_delim('/Users/Yann/Downloads/people_docs_stuart_200421', delim = '\t', col_names = F)
+
+load('/Users/Yann/Documents/non-Github/spo_data/g')
+g = g %>% group_by(path) %>% summarise(value = paste0(value, collapse = "<br>"))
+
+spo_raw = spo_raw %>%
+mutate(X7 = str_replace(X7, "spo", "SPO")) %>%
+separate(X7, into = c('Y1', 'Y2', 'Y3'), sep = '/') %>%
+mutate(fullpath = paste0("/Users/Yann/Documents/non-Github/spo_xml/", Y1, '/XML/', Y2,"/", Y3)) %>% mutate(uniquecode = paste0("Z", 1:nrow(spo_raw), "Z"))
+
+withtext = left_join(spo_raw, g, by = c('fullpath' = 'path')) %>%
+left_join(spo_mapped_people %>% dplyr::select(X1, from_name = X2), by = c('X1' = 'X1'))%>%
+left_join(spo_mapped_people %>% dplyr::select(X1, to_name = X2), by = c('X2' = 'X1')) 
+
+library(textclean)
+library(tidytext)
+
+
+
+
+
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+load('withtext_tokens')
+```
+
+#### Average Description Lengths
+
+To begin with, it's worth counting the size and distribution of individual calendar summaries. The whole dataset consists of about 14 million words (a little over 1/3 the size of the most recent printed *Encyclopedia Britannica*). The entries are generally short: the average number of words per calendar entry is 80. If we look at the distribution of words per document using a histogram, the most frequent entry length is between 0 and 10 words - almost 40,000 documents have a description of this length. It's a 'left-shifted' distribution, which means that most documents are in the smallest category, followed by a smaller number of documents with more words, and so forth. There's a small number of *very* long descriptions: the longest is over 60,000 words, which is a group of orders sent from Edward Montagu, Earl of Manchester to various county sheriffs, which have been bunched together. This very long 'tail' has not been visualised.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, cache=FALSE}
+withtext_tokens %>% 
+ # filter(str_detect(X5,"_mqes_")) %>% 
+  group_by(X5) %>% 
+  tally() %>% 
+  filter(n<1000) %>% 
+  arrange(desc(n)) %>%
+  ggplot() + 
+  geom_histogram(aes(x = n), binwidth = 10) + 
+  theme_bw() + 
+  labs(title = "Histogram of Word Distributions, State Papers Online") + 
+  theme(title = element_text(face = 'bold'))
+```
+
+#### Descriptions over time
+
+The data shows that the lengthof the descriptions varies a lot over time. The graph below shows the average description length per year. A few periods stick out: much of the correspondence in State Papers Online from the years 1603-1611 is actually from the Cecil Papers, which were calendared separately by the Historical Manuscripts Commission, under different editors.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, cache=FALSE}
+library(lubridate)
+withtext_tokens %>% 
+  mutate(year = year(ymd(X4))) %>%  
+  filter(year %in% 1603:1714) %>% 
+  group_by(X5, year) %>% 
+  tally() %>% group_by(year) %>% tally(mean(n)) %>% 
+  ggplot() + 
+  geom_col(aes(year, n))+ 
+  theme_bw() + 
+  labs(title = "Average Document Length per Year, State Papers Online") + 
+  theme(title = element_text(face = 'bold'))
+```
+
+Isolating just the Cecil Papers shows that they have far more extensive descriptions: 236 words, on average. The Cecil Papers also have a differently-shaped distribution: there are few very short descriptions, and in comparison to the rest of the State Papers, the histogram is shifted further to the right: the most frequent number of words is not between 0 and 10, but pretty evenly spread between 50 and 100 words. There's still a not-pictured long tail (one abstract is almost 6,000 words long).
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+withtext_tokens %>% 
+  filter(str_detect(X5,"_mqes_")) %>% 
+  group_by(X5) %>% 
+  tally() %>%
+  filter(n<1000) %>% 
+  arrange(desc(n)) %>%
+  ggplot() + 
+  geom_histogram(aes(x = n), binwidth = 10)+ 
+  theme_bw() + 
+  labs(title = "Histogram of Word Distributions, Cecil Papers") + 
+  theme(title = element_text(face = 'bold'))
+```
+
+In the years following the Cecil Papers, the average length of the descriptions drops sharply. This is in part because the foreign series for this period, which make up a lot of the metadata, haven't really been calendared fully, but are often just lists and indexes with very brief descriptions: mostly all that we have is a date and a description like 'Buckingham to Coke'. The documents get longer on average during the English civil wars: perhaps because there are far fewer documents in total? The average document length falls again during the interregnum, but slowly increases through the rest of the century.
+
+#### Description Lengths per Author
+
+There's a big variation between authors. Arthur Chichester, who was Lord Deputy of Ireland from 1605-1616 has the longest on average, at 480 words. Why might this be? We might think this would be a useful way of understanding which authors were deemed 'important' by those writing the summaries. However, it's difficult here to separate out the signal from the noise: the abstract lengths generally reflect different standards of calendaring rather than who was deemed 'important' by the transcribers. In general State Papers Ireland, which were also calendared under separate conditions, have much longer calendar entries, and this is reflected in the list of authors. On the other hand, some diplomats (Thomas Roe, Balthazar Gerbier, William Boswell) have *very* short average descriptions, less than ten words, reflecting the fact that they are found in the foreign series which often don't have any abstracts at all except listing the author and recipient. The Cecil Papers also have extensive abstracts, and the third in this list, Sir Thomas Lake, wrote most of his letters to either Robert or William Cecil, and these can be found in that section of the data.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, cache=FALSE}
+
+top_a = withtext %>% group_by(X1) %>% tally() %>% arrange(desc(n)) %>% head(100)
+
+withtext_tokens %>% 
+  filter(X1 %in% top_a$X1) %>% 
+  group_by(X1, X5) %>% 
+  tally() %>%  
+  group_by(X1) %>% 
+  tally(mean(n)) %>% 
+  arrange(desc(n)) %>%
+  left_join(spo_mapped_people %>% 
+              select(1,2), by  = c('X1' = 'X1')) %>% head(10) %>% 
+  ggplot() + 
+  geom_col(aes(x = reorder(X2,n), y = n))+ coord_flip()+ 
+  theme_bw() + 
+  labs(title = "Ten Longest Average Document Summary, by Author") + 
+  theme(title = element_text(face = 'bold'))
+```
+
+```{r eval=FALSE, message=FALSE, include=FALSE}
+domestic_series_names = read_delim('/Users/Yann/Documents/non-Github/sp_treemap/sp_domestic.txt', delim = '\t', col_names = F)
+domestic_series_names = domestic_series_names %>% separate(X1, into = c('X1', 'X2', 'X3'), sep = "\\|")
+domestic_series_names = domestic_series_names %>% mutate(X2 = trimws(X2, which = 'both'))
+
+
+
+spo_raw = spo_raw %>%
+mutate(folio_name = X8) %>%
+separate(X8, into = c('series', 'rest'), sep = '/')
+
+spo_raw = spo_raw  %>% mutate(series = trimws(series, which = 'both'))
+
+
+spo_raw = spo_raw %>% separate(rest, into = c('folio', 'folio_no'), sep = ' ')
+spo_raw = spo_raw %>%
+left_join(domestic_series_names %>%
+mutate(X1 = trimws(X1, which = 'both')) , by = c('series' = 'X1'))
+
+spo_raw = spo_raw %>% mutate(series = paste0(series, " (", X3.y, ")" ))
+
+series_avg = withtext_tokens %>%
+mutate(folio_name = X8) %>%
+separate(X8, into = c('series', 'rest'), sep = '/')%>% 
+  mutate(series = trimws(series, which = 'both')) %>% 
+  group_by(series, X5) %>% 
+  tally() %>% group_by(series) %>% tally(mean(n))
+
+series_avg %>% left_join(domestic_series_names %>%
+mutate(X1 = trimws(X1, which = 'both')) , by = c('series' = 'X1')) %>% arrange(desc(n))
+
+```
+
+#### Calendars and Secretaries of State
+
+The State Papers isn't just a random collection of all correspondence received by the government, but in fact much of it is documents collected by individual Secretaries of State, while they were in office. We can also look at the document length of correspondence received by each of these secretaries, which can also give clues as to the origins of the calendars.
+
+To do this we took a list of Secretaries of State from Wikipedia, matched to the State Papers data, and filtered for only documents sent within each Secretary's period in office. There are two pieces of information visualised here: the bars visualise the average number of words per document, and the total letters sent to that secretary while in office. It's important because it shows, for example, that it's not very significant that Henry Sidney has the longest average calendar entry when you realise the State Papers only contains 10 letters written to him.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(plotly)
+options(scipen = 99999)
+sec_of_state = read_csv('/Users/Yann/Documents/non-Github/spo_data/sec_of_state.csv')
+
+p = withtext_tokens %>% 
+  inner_join(sec_of_state, by = c('X2' = 'de_id')) %>%
+  mutate(date = ymd(X4)) %>% 
+  filter(date >start_date & date <end_date)%>% 
+  mutate(year = year(ymd(X4))) %>%  
+  filter(year %in% 1603:1714) %>% 
+  group_by(X5, X2) %>% 
+  tally() %>%
+  group_by(X2) %>% 
+  add_tally(n) %>% 
+  summarise(avg = mean(n), total = length(unique(X5))) %>% 
+  left_join(spo_mapped_people %>% select(1,2), by = c('X2' = 'X1')) %>% 
+  ggplot() + 
+  geom_col(aes(reorder(X2.y, avg),avg, fill = total)) + 
+  coord_flip() + 
+  scale_fill_viridis_c() + 
+  theme_bw() + 
+  labs(title = "Average and Total words", 
+       subtitle = "per document for each Secretary of State (while in office)", 
+       x = NULL) + 
+  theme(title = element_text(face = 'bold'))
+
+ggplotly(p, tooltip = c('avg', 'total'))
+```
+
+The chart shows that letters to two of the later secretaries, Daniel Finch and Leoline Jenkins, have particularly long descriptions, while Joseph Williamson and Robert Cecil, though at opposite ends of the century, have a very similar average document length. One outlier is George Calvert, who, despite receiving over 1,300 letters while in office, they are on average just under 7 words. While Secretary of State, Calvert concentrated on foreign affairs, in particular the [Spanish Match](https://en.wikipedia.org/wiki/Spanish_match), and these letters have been sorted under foreign entries, and as such have minimal calendar entries.
+
+Why might this be?
+
+### Text Mining
+
+Moving on from counting the number of words, the next step is to count the words themselves - a technique which at scale can help to make sense of the content and zoom in on areas of interest. The most basic text mining technique we can apply is simply to count the raw frequency of each word. It's useful to do some pre-processing here, including removing 'stop words': very common words found in most texts, which tend to drown out more 'interesting' terms at the top of any ranked list. A word cloud is a pretty useful way to visualise the top 100 terms: each word is sized by the number of times it occurs.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(wordcloud)
+library(RColorBrewer)
+pal <- brewer.pal(16,"Dark2")
+# data("stop_words")
+# text_without_names = withtext %>% 
+#   mutate(value = textclean::replace_html(value)) %>% 
+#   mutate(value = str_replace_all(value, "Capt\\.", "Captain"))%>% 
+#   mutate(value = str_replace_all(value, "Mr\\.", "Mr"))%>% 
+#   mutate(value = str_replace_all(value, "Thos\\.", "Thomas"))%>% 
+#   mutate(value = str_replace_all(value, "Wm\\.", "William"))%>% 
+#   mutate(value = str_replace_all(value, "Geo\\.", "george"))%>% 
+#   mutate(value = str_replace_all(value, "St\\.", "Saint"))%>% 
+#   mutate(value = str_replace_all(value, "Jo\\.", "John")) %>% 
+#   mutate(value = str_replace_all(value, "Fr\\.", "Father"))%>% 
+#   mutate(value = str_replace_all(value, "Rich\\.", "Richard"))%>% 
+#   mutate(value = str_replace_all(value, "Gen\\.", "General"))%>% 
+#   mutate(value = str_replace_all(value, "Rob\\.", "Robert"))%>% 
+#   mutate(value = str_replace_all(value, "Chas\\.", "Charles"))%>% 
+#   mutate(value = str_replace_all(value, "Col\\.", "Colonel")) %>% 
+#   mutate(value = str_replace_all(value, "Fras\\.", "Francis"))%>% 
+#   mutate(value = str_replace_all(value, "Hen\\.", "Henry")) %>% 
+#   mutate(value = str_replace_all(value, "Gens\\.", "Generals"))%>% 
+#   mutate(value = str_replace_all(value, "Adm\\.", "Admiralty"))%>% 
+#   mutate(value = str_replace_all(value, "Dan\\.", "Daniel")) %>% 
+#   mutate(value = str_replace_all(value, "Nich\\.", "Nicholas")) %>% 
+#   mutate(value = str_replace_all(value, "Nath\\.", "Nathaniel"))%>% 
+#   mutate(value = str_replace_all(value, "Jno\\.", "John"))%>% 
+#   mutate(value = str_replace_all(value, "Edm\\.", "Edmund"))%>% 
+#   mutate(value = str_replace_all(value, "Rob\\.", "Robert")) %>% 
+#   mutate(value = str_replace_all(value, "Comrs\\.", "Commissioners"))%>% 
+#   mutate(value = str_replace_all(value, "Abr\\.", "Abraham")) %>% 
+#   separate(value, into = c('name', 'value'), extra = 'merge', sep = '\\.') %>% 
+#   mutate(value = ifelse(str_detect(name, " to "), value, paste0(name, " ", value))) %>% filter(!is.na(value))
+# 
+# 
+# text_without_names_tokens = text_without_names %>% 
+#   unnest_tokens(word, value)
+# 
+# series_tf_idf = text_without_names_tokens %>%
+# mutate(folio_name = X8) %>%
+# separate(X8, into = c('series', 'rest'), sep = '/')%>% 
+#   mutate(series = trimws(series, which = 'both')) %>% 
+#   group_by(series, word) %>% tally() %>% bind_tf_idf(word, series, n)
+# 
+# 
+# tokens_clean = text_without_names_tokens %>% 
+#   anti_join(stop_words) %>% 
+#   group_by(word) %>% 
+#   tally() %>% 
+#   arrange(desc(n))
+
+
+
+load('tokens_clean')
+
+tokens_clean %>% 
+  with(wordcloud(word, n, random.order = FALSE, max.words = 100, colors=pal))
+
+
+```
+
+The wordcloud gives some clues as to the content of the State Papers. We see many names and titles, reflecting the fact that these documents very often relate to specific people, typical correspondence words like **send**, **letter**, **money**, **time** and so forth, and some words relating to diplomacy such as **French**, **Dutch** and **war**. Other words tell us about the types of letters and instructions contained in the documents: **letters**, **warrant**, and **petition** also score highly. We can also see that much of the correspondence is written to pass information to the state: **news**, **account**, and **report**. There are also words which indicate that other types of letters are asking for something: **desires/desire**, **money**, **favour**.
+
+Another informative analysis is to look at the most common *pairs* of words - also known as *bigrams*.
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+# withtext_bigrams = withtext %>% 
+#   dplyr::select(X5, value) %>% 
+#   unnest_tokens(bigram, value, token  = 'ngrams', n= 2)
+
+load('withtext_bigrams')
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+data("stop_words")
+# top_bigrams = withtext_bigrams %>%
+#   separate(bigram, c("word1", "word2"), sep = " ")%>%
+#   filter(!word1 %in% stop_words$word) %>%
+#   filter(!word2 %in% stop_words$word) %>% 
+#   filter(!word1 %in% c('sir', 'lord', 'sec')) %>% 
+#   group_by(word1, word2) %>% 
+#   tally() %>% 
+#   arrange(desc(n)) %>% head(100)
+
+
+load('top_bigrams')
+
+top_bigrams %>% filter(!is.na(word1)& !is.na(word2)) %>%  
+  mutate(word = paste0(word1, " ", word2)) %>% 
+  with(wordcloud(word, n, random.order = FALSE, max.words = 50, colors=pal))
+```
+
+The top pairs of words are generally all very common phrases such as 'of the', 'to be', and so forth, which I've filtered out. The most common pairs of words are very often names, or at least their title and first name, in most cases. There are also several titles (Lord Admiral, Royal Highness, Lord Mayor), which are referred to throughout. The top pair, **Sir John** doesn't refer to one person: John is by far the most popular early modern English name, and there are a large number of Sir Johns found in the State Papers throughout the century. We also find some navy-related pairs like Dutch Fleet, Merchant ships, East India, and packet boat)
+
+### Tf-Idf scores
+
+A very common text mining technique is to calculate what is know as the Tf-Idf score for each word in a document. This is essentially a measurement of how frequent a word in a given document is, but in proportion to how often it appears in other documents in a corpus. It's often used in search algorithms and spam filters. Each document in the State Papers is a single entry, and they are generally very short. Because of this, it's unlikely we'll find interesting results if each entry is considered a single document, because each word will occur just once or twice in each document, at the most.
+
+More informative is to treat some grouping of entries as a 'document', and look for the most 'significant' words within that. The most obvious one is to look at each 'series', which is the basic organisational unit of the State Papers. The State Papers is divided into Domestic and Foreign series: the latter are also divided further by reigning Monarch (and the Commonwealth). Looking at differences between them is an informative way of thinking about the focus of each reign changed, as well as highlighting differences between the material which was calendared.
+
+```{r message=FALSE, warning=FALSE, cache=FALSE, include=FALSE}
+# series_tf_idf = withtext_tokens %>%
+# mutate(folio_name = X8) %>%
+# separate(X8, into = c('series', 'rest'), sep = '/')%>% 
+#   mutate(series = trimws(series, which = 'both')) %>% 
+#   group_by(series, word) %>% 
+#   tally() %>% 
+#   bind_tf_idf(word, series, n)
+# 
+# save(series_tf_idf, file = 'series_tf_idf')
+load('series_tf_idf')
+```
+
+```{r echo=FALSE, fig.height=8, message=FALSE, warning=FALSE}
+domestic_series_names = read_delim('/Users/Yann/Documents/non-Github/sp_treemap/sp_domestic.txt', delim = '\t', col_names = F)
+domestic_series_names = domestic_series_names %>% separate(X1, into = c('X1', 'X2', 'X3'), sep = "\\|")
+domestic_series_names = domestic_series_names %>% mutate(X2 = trimws(X2, which = 'both'))
+
+
+top_series = spo_raw %>% separate(X5, into = c('series', 'rest'), sep = '/')%>%
+mutate(series = trimws(series, which = 'both')) %>% 
+  mutate(series = str_replace(series, "_", " ")) %>%
+  group_by(series) %>% 
+  tally() %>% 
+  arrange(desc(n)) %>% 
+  head(10) %>% pull(series)
+
+series_tf_idf %>% filter(series %in% top_series)%>% 
+  left_join(domestic_series_names%>%
+mutate(X1 = trimws(X1, which = 'both')) , by = c('series' = 'X1')) %>% 
+  anti_join(stop_words) %>% 
+  slice_max(tf_idf, n = 10) %>%
+  ungroup() %>%
+  ggplot(aes(tf_idf, reorder_within(word,tf_idf, series), fill = X3)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~X3, ncol = 1, scales = "free") +
+  labs(x = "tf-idf", y = NULL)
+```
+
+We can also take the bigrams above and look for the most significant:
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# tf_idf_bigram_series = withtext_bigrams %>%
+#   separate(bigram, c("word1", "word2"), sep = " ")%>%
+#   filter(!word1 %in% stop_words$word) %>%
+#   filter(!word2 %in% stop_words$word) %>% 
+#   filter(!is.na(word1)& !is.na(word2)) %>%  
+#   mutate(word = paste0(word1, " ", word2)) %>%
+# separate(X5, into = c('series', 'rest'), sep = '/')%>% 
+#   mutate(series = str_replace(series, "_", " ")) %>% 
+#   group_by(word, series) %>% tally() %>% 
+#   bind_tf_idf(word, series, n)  %>% 
+#   left_join(domestic_series_names, by= c('series' = 'X1'))
+
+load('tf_idf_bigram_series')
+
+tf_idf_bigram_series %>% 
+  filter(n>10) %>% 
+  arrange(desc(tf_idf)) %>% 
+  filter(str_detect(series, "SP"))
+```
+
+We can also use this method to look at trending words over time.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(plotly)
+library(lubridate)
+p = withtext_tokens %>% 
+  mutate(year = year(ymd(X4))) %>% 
+  filter(year %in% 1603:1714) %>% 
+  group_by(year, word) %>% 
+  tally() %>% 
+  bind_tf_idf(word, year, n) %>% 
+  filter(word == 'plot') %>% 
+  ggplot() + 
+  geom_line(aes(x = year, y = tf_idf))
+
+ggplotly(p)
+
+```
+
+#### Finding 'seasonal' words
+
+Tf-idf scores can help to detect 'seasonal' words: words that appear relatively frequently in one part of the year but infrequently in the rest. This is another instance of very noisy data. If We wanted to exclude words which appear here because of their appearance in a single month, and also words that occurred very infrequently. We made a rule that included only words which occurred across at least ten years, hoping to filter out unusual words that occurred very frequently in a single month because of some event (there are better ways of finding those).
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+tf_idf_months = withtext_tokens %>% 
+  mutate(month = month(ymd(X4), label = T))  %>% 
+  group_by(month, word) %>% tally() %>% bind_tf_idf(word, month, n) 
+
+words_that_occur_across = withtext_tokens %>% mutate(year = year(ymd(X4))) %>% distinct(word, year) %>% group_by(word) %>% tally() %>%  filter(n>10)
+
+tf_idf_months %>% 
+  filter(word %in% words_that_occur_across$word) %>% filter(n>5) %>% 
+  filter(!str_detect(word, "[0-9]{1,}")) %>% 
+  filter(tf_idf>0) %>% 
+  anti_join(stop_words) %>% 
+  slice_max(tf_idf, n = 10) %>%
+  ungroup() %>%
+  ggplot(aes(tf_idf, reorder_within(word,tf_idf, month), fill = as.character(month))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~month, ncol = 3, scales = "free") +
+  labs(x = "tf-idf", y = NULL) 
+
+```
+
+Some of the results are obviously seasonal words; others are less easy to decipher. January has **masque** - a type of play which was often performed at court over the twelve days of Christmas. January, February and November all have unusually high occurrences of the word **frozen** and **frosty,** unsurprisingly. February and March have **shrove**, the Christian festival to mark the beginning of Lent, a moveable feast which takes place in either of these two months; similarly, April has **whitsuntide**, another Christian festival. The summer months have less obvious patterns: March and April have **tilting**, a form of jousting, which you might expect to be seasonal though not necessarily so early in the year!
+
+Some other interesting words but not visualised here: Just outside the top ten, August has **circuits**: a type of court which [usually sat in April/May and August/September](http://sharonhoward.org/waleslaw/gfintro.htm), so that makes sense. There are a number of harvest-related words like **pastures**, and **grapes**, mostly in August and September.
+
+Single events can still, if the frequency is high enough, be enough to push them to the top of the list in this way. I did think it might be possible to find patterns using times series forecasting, but I haven't had much luck so far...
+
+This only scratches the surface at what can be done with the text: text mining is probably the most advanced and largest field of digital humanities.
+
+Informing search - for example, looking for terms relating to the Thirty Years' War, you're still more likely to get hits from later in the century, because there are more documents.

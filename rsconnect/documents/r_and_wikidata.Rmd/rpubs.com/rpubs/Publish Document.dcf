@@ -1,0 +1,10 @@
+name: Publish Document
+title:
+username:
+account: rpubs
+server: rpubs.com
+hostUrl: rpubs.com
+appId: https://api.rpubs.com/api/v1/document/729826/2e86024d56c14c2e830fb65294f2e902
+bundleId: https://api.rpubs.com/api/v1/document/729826/2e86024d56c14c2e830fb65294f2e902
+url: http://rpubs.com/yannryan/729826
+when: 1614112266.47816
